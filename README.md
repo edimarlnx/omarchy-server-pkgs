@@ -241,8 +241,8 @@ its ISO build are green against the same packages.
 > Move `pkgver` only when the pinned upstream commit moves, and reset `pkgrel`
 > to `1` when you do. `omarchy-server/docs/packaging.md` §2.0 has the rules.
 
-`scripts/publish.sh` fetches the currently published database, adds this run's
-packages to it, signs it, and uploads every asset to the `repo` release:
+`scripts/publish.sh` builds the database **fresh from `out/`** with `repo-add`,
+signs it, and uploads every asset to the `repo` release:
 
 * the packages and their `.sig`
 * `omarchy-server.db.tar.gz` / `.files.tar.gz` and their `.sig`
@@ -250,10 +250,35 @@ packages to it, signs it, and uploads every asset to the `repo` release:
   release asset cannot be, so they are published as real copies. `$repo.db` is
   the name pacman asks for, so this is not cosmetic.
 
-A package asset is deleted only once the database stops referencing it, so a
-run that rebuilds one package does not strand the others.
+Anything on the release the new database does not reference is then deleted.
+The database is uploaded before those deletions, so a client fetching mid-run
+sees either the old pair or the new one, never a database naming a file that
+has already gone.
 
-CI does this on every push to `main` and on manual dispatch
+> **`out/` is the whole repository, not a delta.** The database used to be the
+> published one with this run's packages added, which is how `fwall` — renamed
+> to `tui-firewall`, asset deleted — kept a record in the database pointing at
+> a 404 for every client that ran `pacman -Sy`. Rebuilding from `out/` cannot
+> do that, at the price of a rule: **always publish a complete build.** A
+> partial `out/` would drop the packages missing from it. The workflow
+> therefore always runs `scripts/build.sh` with no package list, and has no
+> "which packages" input; the alternative — downloading the still-referenced
+> published packages into `out/` first — buys nothing over a two-minute build
+> of all five.
+
+Rehearsing, on any machine (no Arch and no pacman needed — the local step
+borrows `repo-add` from a container):
+
+```bash
+./scripts/publish.sh --local      # assemble repo/, upload nothing
+./scripts/verify.sh               # serve repo/ over HTTP and attack it
+./scripts/publish.sh --dry-run    # read the live release, say what would move
+```
+
+`--dry-run` writes nothing to the release: it lists the assets a real run would
+upload and the ones it would delete.
+
+CI does the real thing on every push to `main` and on manual dispatch
 (`.github/workflows/publish.yml`), inside `archlinux:latest`, using the
 `GITHUB_TOKEN`.
 

@@ -11,16 +11,18 @@ name: Publish the [omarchy-server] repository
 # The public half of the same key is committed, in
 # pkgbuilds/omarchy-server-keyring/, because that is what the keyring package
 # distributes and what makes `SigLevel = Required` mean anything on a client.
+#
+# Every run builds EVERY package. scripts/publish.sh rebuilds the database from
+# out/ rather than adding to the published one, so out/ has to hold the whole
+# repository or the packages missing from it would be dropped. Building a
+# subset would mean downloading the currently published packages first to fill
+# the gap; building all five takes a couple of minutes and needs no such step,
+# so there is no `packages` input any more.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      packages:
-        description: "Packages to build (space separated, empty = all)"
-        required: false
-        default: ""
 
 concurrency:
   # One publisher at a time: two runs uploading assets to the same release
@@ -83,7 +85,8 @@ jobs:
           echo "Signing key: $fingerprint"
 
       - name: Build
-        run: bash scripts/build.sh ${{ github.event.inputs.packages }}
+        # No package list: the publish set is whatever out/ holds.
+        run: bash scripts/build.sh
 
       - name: Publish
         env:
