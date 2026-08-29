@@ -1,5 +1,10 @@
 # omarchy-server-pkgs
 
+> **Status: unofficial, under validation.** These packages and this repository
+> are an independent experiment and are **not** an official Omarchy project or
+> mirror. The signing key is a lab key for now. Do not add this repository to a
+> machine you care about. Upstream: [omarchy.org](https://omarchy.org).
+
 The signed pacman repository **`[omarchy-server]`**: the packages of the
 headless [Omarchy](https://omarchy.org) server profile, built by GitHub Actions
 and served from the assets of this repository's `repo` release.
