@@ -13,7 +13,7 @@
 
 pkgname=omarchy-server-settings
 pkgver=4.0.1
-pkgrel=4
+pkgrel=5
 pkgdesc="Omarchy Server defaults, /etc/skel content and system configuration"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -84,7 +84,7 @@ package() {
 
   # --- the [omarchy-server] repository ------------------------------------
   # The repository this profile's own packages come from, so an installed
-  # machine can run `omarchy-server-addon fwall` or take an update to
+  # machine can run `omarchy-server-addon tui-firewall` or take an update to
   # omarchy-server without an ISO. The section lives in its own file under
   # /etc/pacman.d/ rather than inside pacman.conf: pacman.conf is rewritten
   # wholesale by omarchy-refresh-pacman and by

@@ -25,7 +25,8 @@ and it is the same arrangement
 | `omarchy-server` | the Omarchy runtime for headless machines (`provides=omarchy`) |
 | `omarchy-server-settings` | its defaults, `/etc/skel` content and system configuration |
 | `omarchy-server-keyring` | the public key that signs everything here |
-| `fwall` | addon: a terminal UI over the system firewall |
+| `tui-firewall` | addon: a terminal UI over the system firewall (formerly `fwall`) |
+| `tui-systemd` | addon: a terminal UI over systemd units and their journal |
 
 The profile these packages install — the overlay, the addon lists, the install
 scripts — is developed in
@@ -71,7 +72,7 @@ the profile) and add one line to `/etc/pacman.conf`:
 Include = /etc/pacman.d/omarchy-server.conf
 ```
 
-Then `sudo pacman -Sy fwall`.
+Then `sudo pacman -Sy tui-firewall tui-systemd`.
 
 ## The SELinux set
 
@@ -178,17 +179,22 @@ Nothing here vendors upstream code. The PKGBUILDs pull pinned commits:
 | Package | Source |
 |---|---|
 | `omarchy-server`, `omarchy-server-settings` | `https://github.com/edimarlnx/omarchy.git`, branch `server`, commit `468b511` |
-| `fwall` | `https://github.com/edimarlnx/tui-tools.git`, commit `f512fc4` |
+| `tui-firewall` | `https://github.com/tui-tools/tui-firewall.git`, tag `v0.1.0` |
+| `tui-systemd` | `https://github.com/tui-tools/tui-systemd.git`, tag `v0.1.0` |
 
-Exporting `OMARCHY_SRC` or `FWALL_SRC` substitutes a local checkout for either,
-which is how the lab repository builds against its working tree and how the ISO
-builder builds offline. `OMARCHY_GIT_URL` / `FWALL_GIT_URL` replace the URL
-outright.
+Exporting `OMARCHY_SRC`, `TUI_FIREWALL_SRC` or `TUI_SYSTEMD_SRC` substitutes a
+local checkout for any of them, which is how the lab repository builds against
+its working tree and how the ISO builder builds offline. `OMARCHY_GIT_URL` /
+`TUI_FIREWALL_GIT_URL` / `TUI_SYSTEMD_GIT_URL` replace the URL outright.
+
+`tui-firewall` was `fwall` while both tools lived in one monorepo. The package
+carries `provides=(fwall)` and `replaces=(fwall)`, so a machine that installed
+the old name takes the rename as an ordinary `pacman -Syu`.
 
 ## Building
 
 ```bash
-./scripts/build.sh                 # all four packages into out/
+./scripts/build.sh                 # all five packages into out/
 ./scripts/build.sh omarchy-server  # one
 ```
 
@@ -208,16 +214,16 @@ export GNUPGHOME=../omarchy-server/pkgs/keys/gnupg   # the lab key
 
 `verify.sh` is the acceptance test for the whole chain. It boots a clean
 `archlinux` container, serves `repo/` over HTTP on loopback, bootstraps the
-trust anchor out of the keyring package, installs `fwall` and `omarchy-server`
-under `SigLevel = Required`, and then points the same container at a hostile
-mirror: the same packages, a database rebuilt so every checksum agrees, and a
-`fwall` signed by a freshly generated stranger's key. pacman must refuse it
-("required key missing from keyring"), and must also refuse the same package
-with no signature at all.
+trust anchor out of the keyring package, installs `tui-firewall` and
+`omarchy-server` under `SigLevel = Required`, and then points the same container
+at a hostile mirror: the same packages, a database rebuilt so every checksum
+agrees, and a `tui-firewall` signed by a freshly generated stranger's key.
+pacman must refuse it ("required key missing from keyring"), and must also
+refuse the same package with no signature at all.
 
 Last run, 2026-08-29, against the lab key: **13 assertions, all PASS** — HTTP
-transport, keyring bootstrap, `pacman -Sy`, `fwall` and `omarchy-server`
-installed under `SigLevel = PackageRequired`, the shipped
+transport, keyring bootstrap, `pacman -Sy`, `fwall` (now `tui-firewall`) and
+`omarchy-server` installed under `SigLevel = PackageRequired`, the shipped
 `/etc/pacman.d/omarchy-server.conf`, and both hostile cases rejected with
 nothing installed. The lab repository's own `pkgs/test.sh` (66 assertions) and
 its ISO build are green against the same packages.
@@ -245,7 +251,7 @@ packages to it, signs it, and uploads every asset to the `repo` release:
   the name pacman asks for, so this is not cosmetic.
 
 A package asset is deleted only once the database stops referencing it, so a
-run that rebuilds one package does not strand the other three.
+run that rebuilds one package does not strand the others.
 
 CI does this on every push to `main` and on manual dispatch
 (`.github/workflows/publish.yml`), inside `archlinux:latest`, using the

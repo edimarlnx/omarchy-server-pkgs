@@ -19,9 +19,10 @@
 # key is used. Nothing about the key material is read from this repository —
 # only its PUBLIC half is here, inside pkgbuilds/omarchy-server-keyring/.
 #
-# Sources: the PKGBUILDs pull the pinned commits over https by default. A local
-# checkout can be substituted by exporting OMARCHY_SRC and/or FWALL_SRC, which
-# is what the omarchy-server lab repository's pkgs/build.sh does.
+# Sources: the PKGBUILDs pull the pinned commits and tags over https by
+# default. A local checkout can be substituted by exporting OMARCHY_SRC,
+# TUI_FIREWALL_SRC and/or TUI_SYSTEMD_SRC, which is what the omarchy-server lab
+# repository's pkgs/build.sh does.
 
 set -euo pipefail
 
@@ -31,7 +32,7 @@ out_dir="$repo_root/out"
 packages=("$@")
 
 if ((${#packages[@]} == 0)); then
-  packages=(omarchy-server-keyring omarchy-server-settings omarchy-server fwall)
+  packages=(omarchy-server-keyring omarchy-server-settings omarchy-server tui-firewall tui-systemd)
 fi
 
 # ── not on Arch: hand the job to a container ────────────────────────────────
@@ -52,9 +53,13 @@ if ! command -v makepkg >/dev/null; then
     mounts+=(-v "$OMARCHY_SRC:/src/omarchy:ro")
     env_args+=(-e "OMARCHY_SRC=/src/omarchy")
   fi
-  if [[ -n ${FWALL_SRC:-} ]]; then
-    mounts+=(-v "$FWALL_SRC:/src/tui-tools:ro")
-    env_args+=(-e "FWALL_SRC=/src/tui-tools")
+  if [[ -n ${TUI_FIREWALL_SRC:-} ]]; then
+    mounts+=(-v "$TUI_FIREWALL_SRC:/src/tui-firewall:ro")
+    env_args+=(-e "TUI_FIREWALL_SRC=/src/tui-firewall")
+  fi
+  if [[ -n ${TUI_SYSTEMD_SRC:-} ]]; then
+    mounts+=(-v "$TUI_SYSTEMD_SRC:/src/tui-systemd:ro")
+    env_args+=(-e "TUI_SYSTEMD_SRC=/src/tui-systemd")
   fi
   exec docker run --rm "${mounts[@]}" "${env_args[@]}" \
     -e "HOST_UID=$(id -u)" -e "HOST_GID=$(id -g)" \
@@ -70,7 +75,7 @@ pacman -Syu --noconfirm --needed base-devel git
 # packages are arch=any file bundles and would pay 250 MiB for a toolchain they
 # never call.
 case " ${packages[*]} " in
-  *" fwall "*) pacman -S --noconfirm --needed go ;;
+  *" tui-firewall "* | *" tui-systemd "*) pacman -S --noconfirm --needed go ;;
 esac
 
 id builder >/dev/null 2>&1 || useradd -m builder
@@ -78,7 +83,7 @@ echo "builder ALL=(ALL) NOPASSWD: /usr/bin/pacman" >/etc/sudoers.d/builder
 chmod 0440 /etc/sudoers.d/builder
 
 # git refuses to read a repository owned by another user.
-for src in /src/omarchy /src/tui-tools; do
+for src in /src/omarchy /src/tui-firewall /src/tui-systemd; do
   [[ -d $src ]] && git config --system --add safe.directory "$src"
 done
 
@@ -131,7 +136,8 @@ for package in "${packages[@]}"; do
     export GNUPGHOME=${gnupg_dir:-/home/builder/gnupg}
     ${sign_key:+export GPGKEY=$sign_key}
     ${OMARCHY_SRC:+export OMARCHY_SRC=$OMARCHY_SRC}
-    ${FWALL_SRC:+export FWALL_SRC=$FWALL_SRC}
+    ${TUI_FIREWALL_SRC:+export TUI_FIREWALL_SRC=$TUI_FIREWALL_SRC}
+    ${TUI_SYSTEMD_SRC:+export TUI_SYSTEMD_SRC=$TUI_SYSTEMD_SRC}
     cd '$work/$package'
     makepkg --noconfirm --nodeps -f ${sign_args[*]}
   "

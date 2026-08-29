@@ -117,16 +117,16 @@ EOF
     check "pacman synced the [omarchy-server] database" bash -c \
       "test -s /var/lib/pacman/sync/omarchy-server.db"
     check "the repository offers this profile packages" bash -c \
-      "pacman -Sl omarchy-server | awk \"{print \\\$2}\" | sort >/tmp/list; for p in fwall omarchy-server omarchy-server-keyring omarchy-server-settings; do grep -qx \"\$p\" /tmp/list || exit 1; done"
+      "pacman -Sl omarchy-server | awk \"{print \\\$2}\" | sort >/tmp/list; for p in tui-firewall tui-systemd omarchy-server omarchy-server-keyring omarchy-server-settings; do grep -qx \"\$p\" /tmp/list || exit 1; done"
 
     # SigLevel = Required is in force for both of these; an unsigned or badly
     # signed package would stop the transaction here.
-    check "fwall installs from the remote repository" bash -c \
-      "pacman -S --noconfirm fwall && test -x /usr/bin/fwall"
+    check "tui-firewall installs from the remote repository" bash -c \
+      "pacman -S --noconfirm tui-firewall && test -x /usr/bin/tui-firewall"
     check "omarchy-server installs from the remote repository" bash -c \
       "pacman -S --noconfirm omarchy-server && test -L /usr/bin/omarchy-version"
     check "the installed packages report the repository they came from" bash -c \
-      "pacman -Qi omarchy-server | grep -qE \"^Version +: 4\\.0\\.1-1\" && pacman -Qi fwall | grep -qE \"^Version +: 0\\.1\\.0-1\""
+      "pacman -Qi omarchy-server | grep -qE \"^Version +: 4\\.0\\.1-1\" && pacman -Qi tui-firewall | grep -qE \"^Version +: 0\\.1\\.0-1\""
     check "SigLevel = Required is actually in force" bash -c \
       "pacman-conf --repo=omarchy-server | grep -q \"SigLevel = PackageRequired\""
     check "the profile shipped its own repository definition" bash -c \
@@ -146,7 +146,7 @@ EOF
       "Not The Omarchy Server Key <attacker@example.invalid>" ed25519 sign never
     attacker_key=$(gpg --with-colons --list-secret-keys |
       awk -F: "/^fpr/ { print \$10; exit }")
-    tampered=$(ls /srv-tampered/fwall-*.pkg.tar.zst)
+    tampered=$(ls /srv-tampered/tui-firewall-*.pkg.tar.zst)
     rm -f "$tampered.sig"
     gpg --batch --yes --detach-sign --no-armor -u "$attacker_key" -o "$tampered.sig" "$tampered"
     unset GNUPGHOME
@@ -160,11 +160,11 @@ EOF
     cp -f /srv-tampered/omarchy-server.db.tar.gz /srv-tampered/omarchy-server.db
     cp -f /srv-tampered/omarchy-server.files.tar.gz /srv-tampered/omarchy-server.files
 
-    pacman -Rns --noconfirm fwall >/dev/null
+    pacman -Rns --noconfirm tui-firewall >/dev/null
     # The good package is in the download cache under the same file name, and a
     # cached file is not re-downloaded. Without this the test would verify the
     # copy it already trusts.
-    rm -f /var/cache/pacman/pkg/fwall-*
+    rm -f /var/cache/pacman/pkg/tui-firewall-*
     # The signature of the GOOD database is still in the sync directory, and a
     # -Syy that finds no .sig on the new mirror leaves it there to be checked
     # against a database it does not belong to.
@@ -177,20 +177,20 @@ EOF
     # valid signature by a stranger, and a stranger is not the keyring.
     check_rejected "a package signed by another key is rejected" \
       "required key missing from keyring|unknown trust|invalid or corrupted" \
-      pacman -S --noconfirm fwall
+      pacman -S --noconfirm tui-firewall
     check "the package from the hostile mirror did not install" bash -c \
-      "! pacman -Qq fwall >/dev/null 2>&1"
+      "! pacman -Qq tui-firewall >/dev/null 2>&1"
 
     # And with no signature at all, which is what an attacker who has no key
     # would serve.
-    rm -f "$tampered.sig" /var/cache/pacman/pkg/fwall-*
+    rm -f "$tampered.sig" /var/cache/pacman/pkg/tui-firewall-*
     # With Required the .sig is not optional metadata but a file of the
     # transaction, so its absence stops the download rather than the install.
     check_rejected "an unsigned package is rejected" \
       "pkg\.tar\.zst\.sig|missing required signature|invalid or corrupted" \
-      pacman -S --noconfirm fwall
+      pacman -S --noconfirm tui-firewall
     check "the unsigned package did not install" bash -c \
-      "! pacman -Qq fwall >/dev/null 2>&1"
+      "! pacman -Qq tui-firewall >/dev/null 2>&1"
 
     echo
     if (( fail )); then

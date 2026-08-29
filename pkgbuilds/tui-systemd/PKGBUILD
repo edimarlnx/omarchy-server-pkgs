@@ -1,0 +1,82 @@
+# Maintainer: Zodo <edimar@quave.com.br>
+#
+# tui-systemd — a terminal UI for systemd units
+# (https://github.com/tui-tools/tui-systemd). It opens on what failed, reads
+# the journal that explains why, and previews the exact command line of every
+# change before running it.
+#
+# This is an ADDON package, for the same reason tui-firewall is one: a headless
+# machine boots, updates and is reached without it. `systemctl` and
+# `journalctl` are what the base has; this is the convenience for the machines
+# somebody actually works on.
+
+pkgname=tui-systemd
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Terminal UI for systemd units and their journal"
+arch=('x86_64')
+url="https://github.com/tui-tools/tui-systemd"
+license=('MIT')
+# Nothing: CGO_ENABLED=0 makes the binary fully static, and the tool shells out
+# to systemctl and journalctl, which systemd itself provides on any machine
+# that could run this at all.
+depends=()
+optdepends=('sudo: privilege escalation for actions, unless started as root')
+makedepends=('git' 'go')
+backup=('etc/tui-systemd/config.toml')
+# The ldflags below already drop the symbol and DWARF tables, so makepkg's
+# debug package would be an empty shell and its strip pass has nothing to do.
+options=('!debug' '!strip')
+
+# The upstream release tag. Local checkout through TUI_SYSTEMD_SRC
+# (/src/tui-systemd for the lab repo's pkgs/build.sh,
+# /omarchy-pkgs/src/tui-systemd inside the ISO builder), which is how the lab
+# builds offline; TUI_SYSTEMD_GIT_URL replaces the URL outright.
+_tag=v0.1.0
+: "${TUI_SYSTEMD_GIT_URL:=${TUI_SYSTEMD_SRC:+file://$TUI_SYSTEMD_SRC}}"
+: "${TUI_SYSTEMD_GIT_URL:=https://github.com/tui-tools/tui-systemd.git}"
+
+source=("$pkgname::git+${TUI_SYSTEMD_GIT_URL}#tag=${_tag}")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$srcdir/$pkgname"
+  # Modules are fetched here rather than in build() so the compile step itself
+  # is offline, and go.sum makes the download reproducible.
+  export GOPATH="$srcdir/gopath"
+  go mod download
+}
+
+build() {
+  cd "$srcdir/$pkgname"
+  export GOPATH="$srcdir/gopath"
+  export CGO_ENABLED=0
+  export GOFLAGS="-mod=readonly -modcacherw"
+  go build -trimpath -ldflags "-s -w -X main.version=${pkgver}" \
+    -o "$srcdir/$pkgname.bin" "./cmd/$pkgname"
+}
+
+check() {
+  cd "$srcdir/$pkgname"
+  export GOPATH="$srcdir/gopath"
+  export CGO_ENABLED=0
+  export GOFLAGS="-mod=readonly -modcacherw"
+  go test ./...
+}
+
+package() {
+  local src="$srcdir/$pkgname"
+
+  install -Dm755 "$srcdir/$pkgname.bin" "$pkgdir/usr/bin/$pkgname"
+
+  # The machine-wide configuration the tool reads first
+  # (/etc/tui-systemd/config.toml, then ~/.config/tui-systemd/config.toml),
+  # shipped verbatim from upstream: unlike tui-firewall there is nothing this
+  # profile has to pin — every default (sudo -n, the active Omarchy theme, 200
+  # journal lines) is already the one a server wants. It is installed anyway so
+  # the keys are discoverable on the machine, and `backup=` keeps an edit.
+  install -Dm644 "$src/examples/config.toml" "$pkgdir/etc/$pkgname/config.toml"
+
+  install -Dm644 "$src/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 "$src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
