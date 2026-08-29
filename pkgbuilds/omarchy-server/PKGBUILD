@@ -120,12 +120,16 @@ package() {
   # /usr/bin symlink loop below so they are linked like any other command.
   install -Dm755 "$srcdir/overlay/runtime/bin/"* -t "$share/bin"
 
-  # System units this profile adds. The palette unit lives here rather than in
-  # the settings package because the command it runs is in this one, and a unit
-  # whose ExecStart is owned by a different package is a dependency waiting to
-  # be forgotten. install/server/enable-services-server.sh enables it.
-  install -Dm644 "$srcdir/overlay/runtime/systemd/omarchy-tty-palette.service" \
-    "$pkgdir/usr/lib/systemd/system/omarchy-tty-palette.service"
+  # System units this profile adds. They live here rather than in the settings
+  # package because the commands they run are in this one, and a unit whose
+  # ExecStart is owned by a different package is a dependency waiting to be
+  # forgotten. install/server/enable-services-server.sh enables the palette
+  # oneshot; omarchy-server-update.timer ships disabled and is turned on by
+  # `omarchy-server-update enable` or by an autoinstall drive that carries an
+  # `unattended-updates` file.
+  install -Dm644 "$srcdir/overlay/runtime/systemd/"*.service \
+    "$srcdir/overlay/runtime/systemd/"*.timer \
+    -t "$pkgdir/usr/lib/systemd/system"
 
   # Upstream ships the repo's own `version` file, which on a development
   # checkout does not match pkgver. Write pkgver so `cat version` and
