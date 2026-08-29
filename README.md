@@ -135,6 +135,17 @@ its ISO build are green against the same packages.
 
 ## Publishing
 
+> **Bump `pkgrel` on every content change.** Release assets are addressed **by
+> file name**, and the file name carries `pkgver-pkgrel`. Rebuilding without a
+> bump republishes the same asset name, `repo-add` records the same version,
+> and `pacman -Syu` on an installed machine finds nothing to do — the new
+> content sits on the server and is never installed. That has already happened
+> once, to `omarchy-server` and `omarchy-server-settings` at `4.0.1-1`, which
+> is why both start at `4.0.1-2`. Editing anything under `server-profile/`
+> means bumping **both**, since the same overlay tarball is a source of both.
+> Move `pkgver` only when the pinned upstream commit moves, and reset `pkgrel`
+> to `1` when you do. `omarchy-server/docs/packaging.md` §2.0 has the rules.
+
 `scripts/publish.sh` fetches the currently published database, adds this run's
 packages to it, signs it, and uploads every asset to the `repo` release:
 
