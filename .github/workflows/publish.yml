@@ -1,0 +1,102 @@
+name: Publish the [omarchy-server] repository
+
+# Builds the packages and republishes the signed pacman repository as the
+# assets of the fixed `repo` release. The tag never moves, so the `Server` line
+# the profile ships never changes.
+#
+# Secrets:
+#   PACMAN_GPG_KEY         ASCII-armored PRIVATE signing key (required)
+#   PACMAN_GPG_PASSPHRASE  its passphrase (optional; omit for a key with none)
+#
+# The public half of the same key is committed, in
+# pkgbuilds/omarchy-server-keyring/, because that is what the keyring package
+# distributes and what makes `SigLevel = Required` mean anything on a client.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Packages to build (space separated, empty = all)"
+        required: false
+        default: ""
+
+concurrency:
+  # One publisher at a time: two runs uploading assets to the same release
+  # would race on the database.
+  group: omarchy-server-repo
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    permissions:
+      contents: write
+    steps:
+      - name: Install the toolchain
+        # The archlinux image has neither git (checkout) nor gh (publish).
+        run: pacman -Syu --noconfirm --needed git github-cli
+
+      - uses: actions/checkout@v4
+
+      - name: Import the signing key
+        env:
+          PACMAN_GPG_KEY: ${{ secrets.PACMAN_GPG_KEY }}
+          PACMAN_GPG_PASSPHRASE: ${{ secrets.PACMAN_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PACMAN_GPG_KEY:-}" ]; then
+            echo "::error::PACMAN_GPG_KEY is not set. See the README." >&2
+            exit 1
+          fi
+          gnupg_home="$RUNNER_TEMP/gnupg"
+          install -d -m 700 "$gnupg_home"
+          echo "GNUPGHOME=$gnupg_home" >>"$GITHUB_ENV"
+          export GNUPGHOME="$gnupg_home"
+          # A passphrase-protected key cannot answer a pinentry prompt on a
+          # runner; the passphrase file plus loopback pinentry is what
+          # scripts/build.sh and scripts/publish.sh expect to find.
+          if [ -n "${PACMAN_GPG_PASSPHRASE:-}" ]; then
+            printf '%s' "$PACMAN_GPG_PASSPHRASE" >"$gnupg_home/passphrase"
+            chmod 600 "$gnupg_home/passphrase"
+            printf 'pinentry-mode loopback\npassphrase-file %s\n' \
+              "$gnupg_home/passphrase" >>"$gnupg_home/gpg.conf"
+            echo "allow-loopback-pinentry" >>"$gnupg_home/gpg-agent.conf"
+            printf '%s' "$PACMAN_GPG_KEY" |
+              gpg --batch --yes --pinentry-mode loopback \
+                --passphrase-file "$gnupg_home/passphrase" --import
+          else
+            printf '%s' "$PACMAN_GPG_KEY" | gpg --batch --yes --import
+          fi
+          fingerprint=$(gpg --with-colons --list-secret-keys |
+            awk -F: '$1 == "fpr" { print $10; exit }')
+          if [ -z "$fingerprint" ]; then
+            echo "::error::PACMAN_GPG_KEY carries no secret key." >&2
+            exit 1
+          fi
+          echo "OMARCHY_SIGN_KEY=$fingerprint" >>"$GITHUB_ENV"
+          # The key must be trusted locally for repo-add --verify to accept the
+          # database it just signed.
+          printf '%s:6:\n' "$fingerprint" | gpg --batch --import-ownertrust
+          echo "Signing key: $fingerprint"
+
+      - name: Build
+        run: bash scripts/build.sh ${{ github.event.inputs.packages }}
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash scripts/publish.sh
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published assets"
+            echo
+            echo '```'
+            ls -la repo
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
