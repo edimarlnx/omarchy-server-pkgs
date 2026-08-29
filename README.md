@@ -70,10 +70,18 @@ Then `sudo pacman -Sy fwall`.
 
 ## The SELinux set
 
-The `selinux` addon of the server profile needs nineteen packages that exist in
+The SELinux addons of the server profile need nineteen packages that exist in
 no Arch repository: the SELinux userland, the Arch reference policy, and eight
 rebuilds of core packages (systemd, coreutils, util-linux, shadow, sudo,
 openssh, pam, pambase) that Arch does not build against `libselinux`.
+
+Seventeen of them are the `selinux` addon, which is what a machine needs to RUN
+confined. The other two — `setools` and `selinux-python`, i.e. `sesearch`,
+`semanage` and `audit2allow` — are the separate `selinux-tools` addon, because
+`setools` pulls `python-networkx` and Arch's `python-networkx` hard-depends on
+scipy, pandas, matplotlib and numpy: 45 packages and 453 MiB of scientific
+Python on a headless server. Both sets are built here; which one a machine
+installs is the profile's decision.
 
 They have their own build script, because the sources are somebody else's
 PKGBUILDs and the builds are real compiles rather than `arch=any` bundles:
@@ -93,15 +101,51 @@ build time; there are two, and each says in its header what would have to be
 true for it to be deleted.
 
 > **Eight of these replace a package Arch ships.** A rebuild that is behind
-> Arch is a **downgrade** delivered silently through `provides=` — which is
-> already the case for `openssh-selinux`, hence the override. Before moving the
-> pin, compare every `*-selinux` pkgver against the Arch package of the same
-> name. `omarchy-server/docs/packaging.md` §2.6 has the check.
+> Arch is a **downgrade** delivered silently through `provides=` — which was
+> already the case for `openssh-selinux` at the first pin used here, hence the
+> override.
 
 `scripts/publish.sh` does not publish this set. It is consumed by the ISO
 builder out of `out/selinux/`, which is what makes the addon work on a machine
-with no network; putting it in the `repo` release is a decision that waits on
-the lockstep check being automated.
+with no network.
+
+### Staying level with Arch
+
+Nobody is going to compare fourteen version numbers by hand every week, so a
+job does it:
+
+```bash
+./scripts/check-selinux-lockstep.sh              # table
+./scripts/check-selinux-lockstep.sh --markdown   # what the workflow posts
+```
+
+It clones `archlinuxhardened/selinux` at the manifest's pinned commit, copies
+`pkgbuilds/selinux-overrides/` over it — exactly what `build-selinux.sh`
+assembles — reads `pkgver-pkgrel` out of each PKGBUILD, and `vercmp`s it
+against the Arch package of the same name with `-selinux` stripped off. It
+compares **what a build today would produce**, not what is sitting in
+`out/selinux/`: that directory is gitignored, absent in CI, and answers a
+different question.
+
+Exit 0 when every rebuild is level with or ahead of Arch, 1 when one is behind
+or a PKGBUILD could not be read (an unread PKGBUILD is not a pass — it is a
+comparison that did not happen), 2 when the check itself could not run.
+
+`.github/workflows/selinux-lockstep.yml` runs it **weekly** (Mondays 06:17 UTC),
+on `workflow_dispatch`, and on any push to `main` that touches the manifest,
+an override or the script. When something is behind it opens — or updates in
+place — a single issue titled *SELinux rebuilds are behind Arch* carrying the
+diff, and fails the job. When everything is level again it comments and closes
+that issue. **It never rebuilds anything**: moving the pin means reading an
+upstream diff and re-running the SELinux acceptance in a VM, and no schedule
+should decide that.
+
+First run, 2026-08-29: 14 rebuilds compared, all in sync
+(`systemd`/`systemd-libs`/`systemd-resolvconf`/`systemd-sysvcompat`/
+`systemd-tests`/`systemd-ukify` 261.2-1, `openssh` 10.5p1-1, `sudo`
+1.9.17.p2-6, `coreutils` 9.11-2, `util-linux`/`util-linux-libs` 2.42.2-1,
+`shadow` 4.20.0.arch1-1, `pam` 1.7.2-2, `pambase` 20260616-1); 11 additive
+packages have no Arch counterpart to compare.
 
 ## Layout
 
@@ -113,10 +157,11 @@ server-profile/       overlay/ addons/ branding/, vendored from the lab repo
 scripts/sync-overlay.sh   refresh server-profile/ from ../omarchy-server
 scripts/build.sh          build and sign the packages into out/
 scripts/build-selinux.sh  build and sign the SELinux set into out/selinux/
+scripts/check-selinux-lockstep.sh  are the rebuilds still level with Arch?
 scripts/gnupg-builder.sh  the signing-key setup both build scripts share
 scripts/publish.sh        repo-add --sign, then upload to the `repo` release
 scripts/verify.sh         serve repo/ over HTTP and install it in a container
-.github/workflows/        publish.yml, the workflow that does all of the above
+.github/workflows/        publish.yml (build+sign+publish), selinux-lockstep.yml
 ```
 
 `out/` and `repo/` are build output and are gitignored.

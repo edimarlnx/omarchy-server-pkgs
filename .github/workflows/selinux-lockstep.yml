@@ -1,0 +1,122 @@
+name: SELinux lockstep with Arch
+
+# Ten of the packages in pkgbuilds/selinux.manifest replace a package the Arch
+# base already has. Arch moves on its own schedule and archlinuxhardened/selinux
+# moves on somebody else's, so the SELinux addon can start silently installing
+# an older systemd, sudo or openssh over Arch's current one. That has already
+# happened once (openssh 10.4p1-3 over Arch's 10.5p1-1), which is why
+# pkgbuilds/selinux-overrides/openssh/ exists.
+#
+# This job compares the two, weekly, and says so. It does NOT rebuild anything:
+# moving the pin means reading an upstream diff and re-running the SELinux
+# acceptance in a VM, and no schedule should decide that.
+#
+# When something is behind it opens -- or updates -- a single issue with the
+# diff, and fails, so the failure is visible both on the Actions tab and in the
+# issue list. When everything is level again it closes that issue.
+
+on:
+  schedule:
+    # Mondays, early. Arch's own mass rebuilds tend to land over a weekend.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # A change to the pin, to the manifest or to an override IS a change to the
+    # answer, so check it immediately rather than waiting for Monday.
+    paths:
+      - "pkgbuilds/selinux.manifest"
+      - "pkgbuilds/selinux-overrides/**"
+      - "scripts/check-selinux-lockstep.sh"
+      - ".github/workflows/selinux-lockstep.yml"
+
+concurrency:
+  group: selinux-lockstep
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  lockstep:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install the toolchain
+        # The archlinux image ships neither git nor gh, and the check needs both
+        # a clone of the upstream PKGBUILD tree and the Arch databases.
+        run: pacman -Syu --noconfirm --needed git github-cli
+
+      - uses: actions/checkout@v4
+
+      - name: Compare the rebuilds against Arch
+        id: check
+        run: |
+          set +e
+          bash scripts/check-selinux-lockstep.sh --markdown >"$RUNNER_TEMP/report.md"
+          status=$?
+          set -e
+          echo "status=$status" >>"$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/report.md"
+          # Exit status 2 is "the check could not run" (no network, a bad pin).
+          # That is a broken job, not a finding, and it must not be reported as
+          # a clean result.
+          if [ "$status" = "2" ]; then
+            echo "::error::the lockstep check could not run; see the log" >&2
+            exit 2
+          fi
+
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          title="SELinux rebuilds are behind Arch"
+          {
+            cat "$RUNNER_TEMP/report.md"
+            echo
+            echo "---"
+            echo
+            echo "Opened by \`.github/workflows/selinux-lockstep.yml\` on $(date -u +%Y-%m-%d)."
+            echo "This issue is updated in place on every run and closes itself when"
+            echo "every rebuild is level with Arch again. Nothing is rebuilt automatically."
+          } >"$RUNNER_TEMP/issue.md"
+
+          # One issue, reused. A weekly job that opens a new issue every Monday
+          # is a job everybody mutes.
+          number=$(gh issue list --state open --search "$title in:title" \
+            --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/issue.md"
+            echo "updated issue #$number"
+          else
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/issue.md" \
+              --label "selinux" || \
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/issue.md"
+          fi
+
+      - name: Close the tracking issue
+        if: steps.check.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          title="SELinux rebuilds are behind Arch"
+          number=$(gh issue list --state open --search "$title in:title" \
+            --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "Every rebuild is level with Arch again as of $(date -u +%Y-%m-%d). Closing."
+            gh issue close "$number"
+            echo "closed issue #$number"
+          fi
+
+      - name: Fail when a rebuild is behind
+        if: steps.check.outputs.status == '1'
+        run: |
+          echo "::error::at least one SELinux rebuild is behind the Arch package it replaces; see the job summary" >&2
+          exit 1
