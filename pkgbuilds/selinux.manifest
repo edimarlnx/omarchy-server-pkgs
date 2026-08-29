@@ -1,0 +1,139 @@
+# The SELinux package set of the server profile.
+#
+# Nothing here is vendored. scripts/build-selinux.sh clones
+# https://github.com/archlinuxhardened/selinux at the commit pinned below and
+# builds exactly the directories named in this file, in this order. Overrides
+# that this profile needs on top of that tree live in pkgbuilds/selinux-overrides/.
+#
+# Format: one package directory per line, in build order. `#` starts a comment;
+# the comment block above each package is the reason it is in the set. A package
+# that is NOT here is not built, and the "Not built" block at the bottom says why.
+#
+# Upstream pin. Move it deliberately, re-read the diff, and re-run the
+# acceptance script before publishing.
+commit=95e4d010acb572c454a4186d56b926f13c99c82c
+
+# ── userland ────────────────────────────────────────────────────────────────
+# Additive: none of these replaces a stock Arch package, so installing them
+# changes nothing about a machine that never enables SELinux.
+
+# The policy database format itself. Everything below links it.
+libsepol
+# The library every SELinux-aware binary calls: is_selinux_enabled(),
+# getcon()/setcon(), the file_contexts lookup. This is the library that the
+# "-selinux" rebuilds are rebuilt against.
+libselinux
+# Compiles the policy language into a binary policy. Needed to build the policy
+# package, and to compile a local .te module on the machine itself.
+checkpolicy
+# The CIL compiler. semodule links it to assemble the loaded policy from the
+# installed modules, so it is not optional even when no .cil is written by hand.
+secilc
+# The policy query library and `sesearch`. A dependency of selinux-python, and
+# the only way to answer "what does the policy actually allow" without reloading
+# it. Read the note on selinux-python below before assuming it is cheap: these
+# two together are 45 packages and 453 MiB on the target.
+setools
+# The management layer under semanage: reads/writes the policy store, runs
+# setfiles after a module change.
+libsemanage
+# semodule_package / semodule_expand, used when building a local module from
+# a .te or a .cil into a .pp for `semodule -i`.
+semodule-utils
+# `semodule`, `load_policy`, `setfiles`, `restorecon`, `fixfiles`, `setsebool`,
+# `newrole`, and the pam_selinux the rebuilt pam links.
+policycoreutils
+# `semanage` (fcontext/port/login/boolean) and `audit2allow`. Without it a
+# denial cannot be turned into a policy module on the machine, which is the
+# whole permissive-to-enforcing workflow.
+#
+# THE BIGGEST OPEN QUESTION IN THIS SET. Measured on an installed machine:
+# removing `setools` and `selinux-python`, and everything that came in with
+# them, takes 45 packages and 452.9 MiB off the server -- 82% of this route's
+# entire size cost. The reason is `setools` -> `python-networkx`, and Arch's
+# python-networkx lists python-scipy, python-pandas, python-matplotlib and
+# python-numpy as HARD dependencies. A headless server that turns SELinux on
+# gets a scientific Python stack.
+#
+# They stay for now because this profile's setup leaf uses `semanage fcontext`,
+# so dropping them is not a one-line edit. Splitting them into a second,
+# optional addon is the recommendation in
+# omarchy-server/reports/2026-08-29-mandatory-access-control.md.
+selinux-python
+# Relabels the files a pacman transaction just wrote. Without it every upgrade
+# leaves new files with the label of their parent directory instead of the one
+# file_contexts assigns, and the system drifts out of policy between relabels.
+selinux-alpm-hook
+# The policy. Modular reference policy with the Arch patches; this is the only
+# policy the archlinuxhardened project maintains for Arch.
+selinux-refpolicy-arch
+
+# ── rebuilds ────────────────────────────────────────────────────────────────
+# Each of these `provides=`/`conflicts=` its stock counterpart, so installing
+# it REPLACES a package the base already has. That is why the addon has to
+# handle the replacement explicitly, and why the set is kept as small as a
+# usable enforcing headless system allows.
+
+# pam_selinux is what puts a login session into its own domain. Without it
+# every session inherits the domain of whatever started it, which on a server
+# means sshd's, and confinement of logged-in users does not exist.
+pambase-selinux
+pam-selinux
+# `ls -Z`, `id -Z`, and — the part that matters beyond inspection — cp/mv/
+# install preserving and setting contexts. Every install/ leaf of this profile
+# writes files with `install`.
+coreutils-selinux
+# `login` (the serial and virtual console path) performs the same context
+# transition sshd does, through pam_selinux; without this rebuild a console
+# login lands unconfined. Also mount, which labels filesystems.
+util-linux-selinux
+# useradd/usermod label the home directory they create, and `semanage login`
+# maps a Unix account to an SELinux user. A user created after the relabel
+# would otherwise get an unlabeled home.
+shadow-selinux
+# sudo performs the role transition to the target user's domain. Unrebuilt,
+# `sudo` keeps the caller's context and root-through-sudo is not distinguished
+# from the caller in the audit trail.
+sudo-selinux
+# sshd calls setexeccon() before handing off to the user shell. This is the
+# single most load-bearing rebuild on a headless machine: it is the only way in.
+openssh-selinux
+# systemd labels /run and /sys/fs/cgroup, honours the units' SELinuxContext=,
+# transitions each service into its own domain at exec, and relabels /dev.
+# Without it services all run in the domain init inherited and file labels
+# under /run are wrong from the first boot.
+systemd-selinux
+
+# ── not built, and why ──────────────────────────────────────────────────────
+# dbus-selinux, dbus-broker-selinux
+#   dbus and dbus-broker are in the base (systemd pulls them), but the server
+#   runs no bus client of its own: no NetworkManager, no logind session bus, no
+#   desktop. Rebuilding them buys SELinux checks on bus messages nobody sends.
+# findutils-selinux, psmisc-selinux, iproute2-selinux
+#   `find -context`, `killall -Z`, `ip -Z`. Inspection conveniences, not
+#   confinement. They cost three more package replacements each machine has to
+#   keep in lockstep with Arch.
+# logrotate-selinux, cronie-selinux
+#   neither package is installed in the server core.
+# mcstrans
+#   translates MCS category labels for human readers. The policy this profile
+#   loads is targeted, not MLS, so there is nothing to translate.
+# restorecond
+#   a daemon that watches a list of files and relabels them. A daemon and an
+#   inotify watch to do what the alpm hook and `restorecon` already do on the
+#   events that matter here.
+# selinux-gui, selinux-sandbox, selinux-dbus-config
+#   a GTK tool, an X sandbox and a bus policy file. All three are desktop.
+# base-selinux, base-devel-selinux
+#   meta packages that pull the whole set. This profile installs an explicit
+#   list instead, because half of that set is not in the server core.
+# sepolgen
+#   the standalone package is the 2016 release, it still wants python2 to
+#   build, and selinux-python `provides=sepolgen` while conflicting with
+#   `sepolgen<2.7`. The generator that audit2allow calls lives in
+#   selinux-python now.
+# procps-ng
+#   there is no procps-ng-selinux to build: archlinuxhardened does not maintain
+#   one, and Arch's procps-ng does not link libselinux. `ps -Z` and `ps -o
+#   label` are therefore unavailable; a process context is read from
+#   /proc/PID/attr/current, which is what `omarchy-server-selinux status` does.

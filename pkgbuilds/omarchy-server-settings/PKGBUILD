@@ -13,7 +13,7 @@
 
 pkgname=omarchy-server-settings
 pkgver=4.0.1
-pkgrel=2
+pkgrel=3
 pkgdesc="Omarchy Server defaults, /etc/skel content and system configuration"
 arch=('any')
 url="https://github.com/basecamp/omarchy"

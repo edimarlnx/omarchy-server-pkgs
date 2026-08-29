@@ -108,6 +108,11 @@ package() {
   # install/server/: the server profile's setup tree.
   cp -a "$srcdir/overlay/runtime/install/server" "$share/install/server"
   chmod 0644 "$share/install/server/"*.sh "$share/install/server/addons/"*.sh
+  # install/server/mac/ carries the AppArmor profiles and the SELinux policy
+  # sources the two MAC addons install. Data, not scripts.
+  if [[ -d $share/install/server/mac ]]; then
+    find "$share/install/server/mac" -type f -exec chmod 0644 {} +
+  fi
 
   # Addon package lists. They live in profile/server/addons/ because the ISO
   # builder reads the same files to bundle those packages in the offline
@@ -115,6 +120,13 @@ package() {
   # is one source of truth.
   install -d "$share/install/server/addons"
   install -Dm644 "$srcdir/addons/"*.packages -t "$share/install/server/addons"
+  # Optional per-addon pacman flags, beside the package list they apply to.
+  # `selinux` is the one addon that needs them: its packages replace packages
+  # the base already has, and pacman will not resolve a conflict under plain
+  # --noconfirm. omarchy-server-addon reads the file when it exists.
+  if compgen -G "$srcdir/addons/*.pacman-args" >/dev/null; then
+    install -Dm644 "$srcdir/addons/"*.pacman-args -t "$share/install/server/addons"
+  fi
 
   # Commands this profile adds on top of upstream's bin/, copied in before the
   # /usr/bin symlink loop below so they are linked like any other command.

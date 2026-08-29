@@ -1,0 +1,43 @@
+Use PyUnicode_FromString in the Python typemaps.
+
+libselinux 3.10 still calls PyString_FromString, which SWIG's generated
+header used to define as a compatibility macro. Python 3.14 dropped it, so
+the call becomes an implicit declaration returning int and GCC 15 rejects
+passing that where a PyObject* is expected:
+
+  error: passing argument 3 of 'PyList_SetItem' makes pointer from integer
+         without a cast [-Wint-conversion]
+
+Upstream fixed it the same way after the 3.10 release; this is that change,
+backported so the pinned release builds against the Python currently in Arch.
+
+Upstream: https://github.com/SELinuxProject/selinux
+--- a/src/selinuxswig_python.i
++++ b/src/selinuxswig_python.i
+@@ -69,7 +69,7 @@
+ 	PyObject* list = PyList_New(*$2);
+ 	int i;
+ 	for (i = 0; i < *$2; i++) {
+-		PyList_SetItem(list, i, PyString_FromString((*$1)[i]));
++		PyList_SetItem(list, i, PyUnicode_FromString((*$1)[i]));
+ 	}
+ 	$result = SWIG_AppendOutput($result, list);
+ }
+@@ -102,7 +102,7 @@
+ 			len++;
+ 		plist = PyList_New(len);
+ 		for (i = 0; i < len; i++) {
+-			PyList_SetItem(plist, i, PyString_FromString((*$1)[i]));
++			PyList_SetItem(plist, i, PyUnicode_FromString((*$1)[i]));
+ 		}
+ 	} else {
+ 		plist = PyList_New(0);
+@@ -119,7 +119,7 @@
+ 	if (*$1) {
+ 		plist = PyList_New(result);
+ 		for (i = 0; i < result; i++) {
+-			PyList_SetItem(plist, i, PyString_FromString((*$1)[i]));
++			PyList_SetItem(plist, i, PyUnicode_FromString((*$1)[i]));
+ 		}
+ 	} else {
+ 		plist = PyList_New(0);

@@ -68,13 +68,52 @@ Include = /etc/pacman.d/omarchy-server.conf
 
 Then `sudo pacman -Sy fwall`.
 
+## The SELinux set
+
+The `selinux` addon of the server profile needs nineteen packages that exist in
+no Arch repository: the SELinux userland, the Arch reference policy, and eight
+rebuilds of core packages (systemd, coreutils, util-linux, shadow, sudo,
+openssh, pam, pambase) that Arch does not build against `libselinux`.
+
+They have their own build script, because the sources are somebody else's
+PKGBUILDs and the builds are real compiles rather than `arch=any` bundles:
+
+```bash
+./scripts/build-selinux.sh                 # everything in the manifest, into out/selinux/
+./scripts/build-selinux.sh libselinux      # one
+```
+
+Nothing is vendored. `pkgbuilds/selinux.manifest` carries the pinned commit of
+[`archlinuxhardened/selinux`](https://github.com/archlinuxhardened/selinux), the
+build order, and one paragraph per package saying why it is in the set — plus,
+at the end, one per package saying why the ones that are not, are not. The
+changes this profile needs on top of that tree live in
+`pkgbuilds/selinux-overrides/<pkg>/`, copied over the upstream directory at
+build time; there are two, and each says in its header what would have to be
+true for it to be deleted.
+
+> **Eight of these replace a package Arch ships.** A rebuild that is behind
+> Arch is a **downgrade** delivered silently through `provides=` — which is
+> already the case for `openssh-selinux`, hence the override. Before moving the
+> pin, compare every `*-selinux` pkgver against the Arch package of the same
+> name. `omarchy-server/docs/packaging.md` §2.6 has the check.
+
+`scripts/publish.sh` does not publish this set. It is consumed by the ISO
+builder out of `out/selinux/`, which is what makes the addon work on a machine
+with no network; putting it in the `repo` release is a decision that waits on
+the lockstep check being automated.
+
 ## Layout
 
 ```
 pkgbuilds/<pkg>/      the PKGBUILDs, one directory each
+pkgbuilds/selinux.manifest       the SELinux set: pinned commit, order, rationale
+pkgbuilds/selinux-overrides/     this profile's changes on top of that upstream
 server-profile/       overlay/ addons/ branding/, vendored from the lab repo
 scripts/sync-overlay.sh   refresh server-profile/ from ../omarchy-server
 scripts/build.sh          build and sign the packages into out/
+scripts/build-selinux.sh  build and sign the SELinux set into out/selinux/
+scripts/gnupg-builder.sh  the signing-key setup both build scripts share
 scripts/publish.sh        repo-add --sign, then upload to the `repo` release
 scripts/verify.sh         serve repo/ over HTTP and install it in a container
 .github/workflows/        publish.yml, the workflow that does all of the above
