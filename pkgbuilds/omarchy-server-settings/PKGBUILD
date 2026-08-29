@@ -1,0 +1,336 @@
+# Maintainer: Zodo <edimar@quave.com.br>
+#
+# Server counterpart of omarchy-settings. Same layout (see docs/packaging.md):
+#   /usr/share/omarchy/{default,config,etc-overrides,logo*,icon*}
+#   /etc/skel/.config/*   seeded from config/
+#   /etc/*                system configuration
+#   /usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf
+# reduced to the files a headless machine reads, plus the server-specific
+# replacements from the server profile's overlay/settings/.
+#
+# Sources: the pinned commit of the omarchy fork (branch `server`) plus the
+# overlay tarball packed by scripts/build.sh out of server-profile/.
+
+pkgname=omarchy-server-settings
+pkgver=4.0.1
+pkgrel=1
+pkgdesc="Omarchy Server defaults, /etc/skel content and system configuration"
+arch=('any')
+url="https://github.com/basecamp/omarchy"
+license=('MIT')
+# hicolor-icon-theme (no icons shipped) and plymouth are gone. `gum` moved to
+# omarchy-server, which is where the commands that prompt with it live.
+depends=('bash' 'curl')
+makedepends=('git')
+provides=("omarchy-settings=${pkgver}")
+conflicts=('omarchy-settings' 'omarchy-settings-dev')
+install="${pkgname}.install"
+
+# Pinned commit on branch `server` of the fork.
+_commit=468b511249b1a341311c46f5a7cf81aa5bc5af92
+# The default source is the public fork over https, which is what CI and any
+# `makepkg` run outside this repository's build scripts get. A builder that
+# already has a checkout (the lab repo's pkgs/build.sh bind mounts one at
+# /src/omarchy, the ISO builder mounts one at /omarchy-source) exports
+# OMARCHY_SRC and the build reads that instead, so no network and no ambient
+# working-tree state. OMARCHY_GIT_URL overrides both.
+: "${OMARCHY_GIT_URL:=${OMARCHY_SRC:+file://$OMARCHY_SRC}}"
+: "${OMARCHY_GIT_URL:=https://github.com/edimarlnx/omarchy.git}"
+
+source=("omarchy::git+${OMARCHY_GIT_URL}#commit=${_commit}"
+        "omarchy-server-overlay.tar.gz")
+sha256sums=('SKIP'
+            'SKIP')
+
+# Files under /etc that pacman must not overwrite when the admin edited them.
+backup=('etc/fastfetch/config.jsonc'
+        'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
+        'etc/limine-entry-tool.d/omarchy-defaults.conf'
+        'etc/limine-entry-tool.d/omarchy-uki.conf'
+        'etc/gnupg/dirmngr.conf'
+        'etc/sysctl.d/99-omarchy-sysctl.conf'
+        'etc/sysctl.d/90-omarchy-file-watchers.conf'
+        'etc/systemd/resolved.conf.d/10-disable-multicast.conf'
+        'etc/systemd/system.conf.d/10-faster-shutdown.conf'
+        'etc/systemd/system.conf.d/20-omarchy-nofile.conf'
+        'etc/systemd/user.conf.d/20-omarchy-nofile.conf'
+        'etc/systemd/system/user@.service.d/10-faster-shutdown.conf'
+        'etc/systemd/system/system.slice.d/10-oomd.conf'
+        'etc/systemd/oomd.conf.d/10-omarchy.conf'
+        'etc/systemd/system/serial-getty@.service.d/10-omarchy-issue.conf'
+        'etc/issue.net'
+        'etc/issue.serial'
+        'etc/omarchy-profile'
+        'etc/pacman.d/omarchy-server.conf')
+
+package() {
+  local src="$srcdir/omarchy"
+  local overlay="$srcdir/overlay/settings"
+  local share="$pkgdir/usr/share/omarchy"
+  local skel="$pkgdir/etc/skel"
+
+  install -d "$share"
+
+  # --- /usr/share/omarchy/default -----------------------------------------
+  # Everything not listed is a compositor, session, font, theme, browser,
+  # audio or input-method default.
+  install -d "$share/default"
+  cp -a "$src/default/bash" "$share/default/"
+  # fns/herdr drives a GUI app that is not installed.
+  rm -f "$share/default/bash/fns/herdr"
+  install -Dm644 "$src/default/bashrc" "$share/default/bashrc"
+  cp -a "$src/default/gpg" "$share/default/"
+  cp -a "$src/default/pacman" "$share/default/"
+
+  # --- the [omarchy-server] repository ------------------------------------
+  # The repository this profile's own packages come from, so an installed
+  # machine can run `omarchy-server-addon fwall` or take an update to
+  # omarchy-server without an ISO. The section lives in its own file under
+  # /etc/pacman.d/ rather than inside pacman.conf: pacman.conf is rewritten
+  # wholesale by omarchy-refresh-pacman and by
+  # install/server/post-install-pacman-server.sh from the channel templates
+  # below, and a repository definition that a channel switch deletes is a
+  # repository that stops existing at the worst moment.
+  #
+  # SigLevel = Required: every package must carry a signature from a key the
+  # local keyring trusts. That key is what omarchy-server-keyring installs and
+  # `pacman-key --populate omarchy-server` trusts, which is why the runtime
+  # depends on the keyring. DatabaseOptional matches the channel templates'
+  # global default; the database IS signed and its .sig IS published, but a
+  # release asset can lag a replacement by a moment and a hard requirement
+  # there turns that moment into a failed -Sy.
+  install -d "$pkgdir/etc/pacman.d"
+  cat >"$pkgdir/etc/pacman.d/omarchy-server.conf" <<'EOF'
+# The [omarchy-server] pacman repository: omarchy-server, its settings and
+# keyring, and the profile's addon packages, built and signed by GitHub Actions
+# in https://github.com/edimarlnx/omarchy-server-pkgs and served from the
+# assets of that repository's `repo` release.
+#
+# Included from /etc/pacman.conf. Shipped by omarchy-server-settings.
+[omarchy-server]
+SigLevel = Required DatabaseOptional
+Server = https://github.com/edimarlnx/omarchy-server-pkgs/releases/download/repo
+EOF
+  chmod 0644 "$pkgdir/etc/pacman.d/omarchy-server.conf"
+
+  # Enable it in every channel template, so the file that
+  # post-install-pacman-server.sh and omarchy-refresh-pacman drop on
+  # /etc/pacman.conf already has the repository. A top-level `Include` is
+  # enough: pacman splices the file in where the directive sits, section
+  # header included.
+  local channel_conf
+  for channel_conf in "$share/default/pacman/pacman-"*.conf; do
+    [[ -e $channel_conf ]] || continue
+    grep -q '/etc/pacman.d/omarchy-server.conf' "$channel_conf" && continue
+    cat >>"$channel_conf" <<'EOF'
+
+# The profile's own repository (see /etc/pacman.d/omarchy-server.conf).
+Include = /etc/pacman.d/omarchy-server.conf
+EOF
+  done
+  grep -q 'omarchy-server.conf' "$share/default/pacman/pacman-stable.conf" ||
+    { echo "pacman-stable.conf: the [omarchy-server] Include was not added" >&2; return 1; }
+  cp -a "$src/default/snapper" "$share/default/"
+  # Agent skills: Omarchy is agent-first and these cost ~40 KB, so the server
+  # keeps them even though nothing graphical consumes them.
+  cp -a "$src/default/agents" "$share/default/"
+
+  # Only the update guard. The two Hyprland config-reload hooks have no
+  # compositor to reload.
+  install -Dm644 "$src/default/libalpm/hooks/00-omarchy-update-guard.hook" \
+    "$share/default/libalpm/hooks/00-omarchy-update-guard.hook"
+
+  # limine: upstream default.conf, server limine.conf (timeout 2, branding,
+  # wallpaper). The wallpaper itself travels with the package and is copied to
+  # the ESP by install/server/limine-branding-server.sh, because the ESP is a
+  # FAT volume nothing here can own.
+  install -Dm644 "$src/default/limine/default.conf" "$share/default/limine/default.conf"
+  install -Dm644 "$overlay/default/limine/limine.conf" "$share/default/limine/limine.conf"
+  install -Dm644 "$srcdir/branding/limine-wallpaper.png" \
+    "$share/default/limine/limine-wallpaper.png"
+
+  # systemd: only the two faster-shutdown drop-ins and the zram config.
+  # The eight user units and the three system-sleep hooks are session and
+  # laptop territory.
+  install -Dm644 "$src/default/systemd/faster-shutdown.conf" \
+    "$share/default/systemd/faster-shutdown.conf"
+  install -Dm644 "$src/default/systemd/user@.service.d/faster-shutdown.conf" \
+    "$share/default/systemd/user@.service.d/faster-shutdown.conf"
+  install -Dm644 "$overlay/zram-generator/90-omarchy.conf" \
+    "$share/default/systemd/zram-generator.conf.d/90-omarchy.conf"
+
+  # docker: shipped as defaults under /usr/share, NOT installed into /etc.
+  # Docker is an addon on this profile, and one of these files makes
+  # systemd-resolved open an extra DNS listener on the docker bridge address —
+  # a listening socket on a machine with no bridge. install/server/addons/
+  # docker.sh copies all three into /etc when the addon goes on.
+  install -Dm644 "$src/etc/docker/daemon.json" \
+    "$share/default/docker/daemon.json"
+  install -Dm644 "$src/etc/systemd/resolved.conf.d/20-docker-dns.conf" \
+    "$share/default/docker/20-docker-dns.conf"
+  install -Dm644 "$src/etc/systemd/system/docker.service.d/no-block-boot.conf" \
+    "$share/default/docker/no-block-boot.conf"
+
+  # --- /usr/share/omarchy/config + /etc/skel ------------------------------
+  # TUI/CLI tool configs only.
+  install -d "$share/config" "$skel/.config"
+  local config_dirs=(btop git lazygit tmux)
+  local dir
+  for dir in "${config_dirs[@]}"; do
+    cp -a "$src/config/$dir" "$share/config/"
+    cp -a "$src/config/$dir" "$skel/.config/"
+  done
+  install -Dm644 "$src/config/starship.toml" "$share/config/starship.toml"
+  install -Dm644 "$src/config/starship.toml" "$skel/.config/starship.toml"
+
+  # config/omarchy minus the graphical bits: shell.json is the Quickshell
+  # config, extensions/omarchy-menu.jsonc the graphical menu, and the
+  # battery-low / font-set / theme-set hook samples all notify a desktop.
+  local hook
+  for hook in post-boot.d/weather post-update.d/show-update-notification \
+    pre-refresh-pacman.d/add-custom-repo; do
+    install -Dm644 "$src/config/omarchy/hooks/${hook}.sample" \
+      "$share/config/omarchy/hooks/${hook}.sample"
+    install -Dm644 "$src/config/omarchy/hooks/${hook}.sample" \
+      "$skel/.config/omarchy/hooks/${hook}.sample"
+  done
+
+  # Branding text used by fastfetch and omarchy-show-logo.
+  install -Dm644 "$src/logo.txt" "$skel/.config/omarchy/branding/about.txt"
+
+  # --- /usr/share/omarchy/etc-overrides -----------------------------------
+  # Files owned by other packages, copied into place by the install scriptlet
+  # because pacman cannot own them. The desktop also overrides
+  # plymouth-plymouthd.conf and cups-cups-browsed.conf; neither package is
+  # installed here.
+  install -d "$share/etc-overrides"
+  install -Dm644 "$src/etc/security/faillock.conf" \
+    "$share/etc-overrides/security-faillock.conf"
+  install -Dm644 "$overlay/etc-overrides/nsswitch.conf" \
+    "$share/etc-overrides/nsswitch.conf"
+  install -Dm644 "$src/default/bashrc" "$share/etc-overrides/dot.bashrc"
+  # PRETTY_NAME carries the version because it is what every tool that greets a
+  # human prints: the fastfetch MOTD, `hostnamectl`, ssh banners, monitoring
+  # agents. ANSI_COLOR is plain "0;32" rather than a 24-bit green: it is read
+  # by consoles that may have no truecolor, and 32 is the palette slot
+  # omarchy-tty-palette paints Tokyo Night green into anyway.
+  cat >"$share/etc-overrides/os-release" <<EOF
+NAME="Omarchy Server"
+PRETTY_NAME="Omarchy Server ${pkgver}"
+ID=omarchy-server
+ID_LIKE="omarchy arch"
+BUILD_ID="${pkgver}"
+VERSION_ID="${pkgver}"
+ANSI_COLOR="0;32"
+HOME_URL="https://omarchy.org"
+DOCUMENTATION_URL="https://learn.omacom.io/2/the-omarchy-manual"
+SUPPORT_URL="https://discord.gg/tXFUdasqhY"
+BUG_REPORT_URL="https://github.com/basecamp/omarchy/issues"
+LOGO=omarchy
+EOF
+  chmod 0644 "$share/etc-overrides/os-release"
+
+  # /etc/issue: what the console shows before anybody logs in, and the only
+  # place the edition can identify itself between the bootloader and the login
+  # prompt. Owned by the `filesystem` package, so it travels through
+  # etc-overrides like os-release does.
+  #
+  # The colour escapes are literal ESC bytes. agetty copies an issue file out
+  # verbatim except for its own backslash sequences, and `\e` is not one of
+  # them; `\n` (hostname), `\l` (tty) and `\4` (first IPv4 address) are, and so
+  # is `\S{VERSION_ID}`, which agetty reads from /etc/os-release.
+  local esc=$'\033'
+  local green="${esc}[32m" bold="${esc}[1;32m" dim="${esc}[2m" reset="${esc}[0m"
+  # The logo is indented two columns so it lines up with the fields under it
+  # and does not sit flush against the left edge of the console. That makes it
+  # 83 columns wide, which is why the serial console below gets its own file.
+  {
+    printf '%s\n' "$green"
+    sed 's/^/  /' "$src/logo.txt"
+    cat <<ISSUE
+${reset}
+${bold}  Omarchy Server${reset} ${green}\\S{VERSION_ID}${reset}
+${dim}  host${reset} \\n   ${dim}tty${reset} \\l   ${dim}ipv4${reset} \\4
+
+ISSUE
+  } >"$share/etc-overrides/issue"
+  chmod 0644 "$share/etc-overrides/issue"
+
+  # The serial console gets the same information without the ASCII art: the
+  # logo is 81 columns and a serial line is 80, so every one of its rows would
+  # wrap. serial-getty@.service.d/10-omarchy-issue.conf points agetty here.
+  # Unlike /etc/issue this path is owned by no package, so the package owns it.
+  install -d "$pkgdir/etc"
+  {
+    cat <<ISSUE
+${bold}Omarchy Server${reset} ${green}\\S{VERSION_ID}${reset}
+${dim}host${reset} \\n   ${dim}tty${reset} \\l   ${dim}ipv4${reset} \\4
+
+ISSUE
+  } >"$pkgdir/etc/issue.serial"
+  chmod 0644 "$pkgdir/etc/issue.serial"
+
+  install -Dm644 "$src/logo.txt" "$share/logo.txt"
+  install -Dm644 "$src/logo.svg" "$share/logo.svg"
+  install -Dm644 "$src/icon.txt" "$share/icon.txt"
+
+  # --- /etc ---------------------------------------------------------------
+  # Straight copies from the source tree.
+  local etc_files=(
+    gnupg/dirmngr.conf
+    limine-entry-tool.d/omarchy-uki.conf
+    profile.d/omarchy.sh
+    sudoers.d/omarchy-passwd-tries
+    sudoers.d/omarchy-tzupdate
+    sysctl.d/90-omarchy-file-watchers.conf
+    sysctl.d/99-omarchy-sysctl.conf
+    systemd/resolved.conf.d/10-disable-multicast.conf
+    systemd/system.conf.d/10-faster-shutdown.conf
+    systemd/system.conf.d/20-omarchy-nofile.conf
+    systemd/system/user@.service.d/10-faster-shutdown.conf
+    systemd/user.conf.d/20-omarchy-nofile.conf
+    tmpfiles.d/omarchy-zswap.conf
+  )
+  local file
+  for file in "${etc_files[@]}"; do
+    install -Dm644 "$src/etc/$file" "$pkgdir/etc/$file"
+  done
+  # sudoers.d entries must not be group/world writable or sudo refuses them.
+  chmod 0440 "$pkgdir/etc/sudoers.d/"*
+  # install/config/snapper.sh copies this template into /etc/snapper/configs.
+  # Upstream generates it from default/snapper/root (verified byte-identical
+  # in the published omarchy-settings 4.0.1).
+  install -Dm644 "$src/default/snapper/root" \
+    "$pkgdir/etc/snapper/config-templates/omarchy"
+
+  # Server replacements (rationale inside each file).
+  install -Dm644 "$overlay/etc/limine-entry-tool.d/omarchy-defaults.conf" \
+    "$pkgdir/etc/limine-entry-tool.d/omarchy-defaults.conf"
+  install -Dm644 "$overlay/etc/mkinitcpio.conf.d/omarchy_hooks.conf" \
+    "$pkgdir/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+  install -Dm644 "$src/etc/systemd/oomd.conf.d/10-omarchy.conf" \
+    "$pkgdir/etc/systemd/oomd.conf.d/10-omarchy.conf"
+  install -Dm644 "$overlay/etc/systemd/system/system.slice.d/10-oomd.conf" \
+    "$pkgdir/etc/systemd/system/system.slice.d/10-oomd.conf"
+  install -Dm644 "$overlay/etc/fastfetch/config.jsonc" \
+    "$pkgdir/etc/fastfetch/config.jsonc"
+  install -Dm644 "$overlay/etc/profile.d/omarchy-path.sh" \
+    "$pkgdir/etc/profile.d/omarchy-path.sh"
+  # The login banner hook and the plain-text banner ssh can be pointed at.
+  install -Dm644 "$overlay/etc/profile.d/omarchy-motd.sh" \
+    "$pkgdir/etc/profile.d/omarchy-motd.sh"
+  install -Dm644 "$overlay/etc/issue.net" "$pkgdir/etc/issue.net"
+  install -Dm644 "$overlay/etc/systemd/system/serial-getty@.service.d/10-omarchy-issue.conf" \
+    "$pkgdir/etc/systemd/system/serial-getty@.service.d/10-omarchy-issue.conf"
+
+  # The profile marker omarchy-apply-system reads when OMARCHY_PROFILE is not
+  # in the environment (see the apply-system patch in omarchy-server).
+  echo server >"$pkgdir/etc/omarchy-profile"
+  chmod 0644 "$pkgdir/etc/omarchy-profile"
+
+  # --- zram ---------------------------------------------------------------
+  install -Dm644 "$overlay/zram-generator/90-omarchy.conf" \
+    "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
+
+  install -Dm644 "$src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

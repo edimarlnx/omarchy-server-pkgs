@@ -1,0 +1,12 @@
+# Build output.
+out/
+repo/
+
+# Packed by scripts/build.sh from server-profile/, which is the tracked copy.
+pkgbuilds/*/omarchy-server-overlay.tar.gz
+
+# makepkg leftovers, when a PKGBUILD is built in place.
+pkgbuilds/*/src/
+pkgbuilds/*/pkg/
+pkgbuilds/*/*.pkg.tar.zst
+pkgbuilds/*/*.pkg.tar.zst.sig

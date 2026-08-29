@@ -1,0 +1,75 @@
+# Copies the etc-overrides into place. Same mechanism as omarchy-settings:
+# these paths are owned by other packages (filesystem, pam, glibc, the skel
+# defaults), so pacman cannot own them and a scriptlet has to write them.
+#
+# Server subset: no plymouthd.conf and no cups-browsed.conf — neither package
+# is installed in this profile.
+#
+# NOTE: these cp -f's are intentionally destructive on every install/upgrade.
+# An admin who customizes /etc/os-release, /etc/issue, /etc/nsswitch.conf,
+# /etc/security/faillock.conf or /etc/skel/.bashrc WILL have those changes
+# reset on the next upgrade. That is the trade-off of routing upstream-owned
+# paths through etc-overrides instead of pacman backup=().
+
+_etc_overrides_apply() {
+  echo "Applying Omarchy Server etc-overrides..."
+
+  install -d /etc/security /etc/skel
+
+  rm -f /etc/os-release
+  cp -f /usr/share/omarchy/etc-overrides/os-release             /etc/os-release
+  cp -f /usr/share/omarchy/etc-overrides/security-faillock.conf /etc/security/faillock.conf
+  cp -f /usr/share/omarchy/etc-overrides/nsswitch.conf          /etc/nsswitch.conf
+  cp -f /usr/share/omarchy/etc-overrides/dot.bashrc             /etc/skel/.bashrc
+  # /etc/issue belongs to the `filesystem` package, so it goes through the same
+  # override mechanism. This is the pre-login identity of the machine on every
+  # video console.
+  cp -f /usr/share/omarchy/etc-overrides/issue                  /etc/issue
+  chmod 0644 /etc/os-release /etc/security/faillock.conf /etc/nsswitch.conf \
+    /etc/skel/.bashrc /etc/issue
+}
+
+# Enable the [omarchy-server] repository on a machine that is already
+# installed. The channel templates this package ships already carry the
+# `Include`, but /etc/pacman.conf is only rewritten from them by
+# omarchy-refresh-pacman and by install/server/post-install-pacman-server.sh --
+# neither of which runs on an ordinary `omarchy-update`. Without this, an
+# installed server would keep a pacman.conf that has no idea where its own
+# packages come from.
+#
+# The guard is `[omarchy]`: during an ISO install the target's /etc/pacman.conf
+# is the live medium's offline configuration (a single `[offline]` repository
+# pointing at a file:// mirror, no network), and adding a remote repository to
+# it would make every remaining install of that phase reach for GitHub. That
+# config has no `[omarchy]` section; the channel templates do, and
+# post-install-pacman-server.sh installs one of them at the end of the install
+# with the Include already in it.
+_pacman_repo_enable() {
+  local conf=/etc/pacman.conf
+  local include="Include = /etc/pacman.d/omarchy-server.conf"
+
+  [ -f "$conf" ] || return 0
+  grep -q '^\[omarchy\]' "$conf" || return 0
+  grep -qF "/etc/pacman.d/omarchy-server.conf" "$conf" && return 0
+  # An admin (or a test harness) who defined the repository inline keeps it:
+  # a second [omarchy-server] section is a duplicate pacman would complain
+  # about, and the intent of the one already there is unambiguous.
+  grep -q '^\[omarchy-server\]' "$conf" && return 0
+
+  echo "Enabling the [omarchy-server] repository in $conf..."
+  {
+    echo
+    echo "# The profile's own repository (see /etc/pacman.d/omarchy-server.conf)."
+    echo "$include"
+  } >>"$conf"
+}
+
+post_install() {
+  _etc_overrides_apply
+  _pacman_repo_enable
+}
+
+post_upgrade() {
+  _etc_overrides_apply
+  _pacman_repo_enable
+}
