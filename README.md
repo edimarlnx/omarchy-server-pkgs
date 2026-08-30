@@ -25,8 +25,6 @@ and it is the same arrangement
 | `omarchy-server` | the Omarchy runtime for headless machines (`provides=omarchy`) |
 | `omarchy-server-settings` | its defaults, `/etc/skel` content and system configuration |
 | `omarchy-server-keyring` | the public key that signs everything here |
-| `tui-firewall` | addon: a terminal UI over the system firewall (formerly `fwall`) |
-| `tui-systemd` | addon: a terminal UI over systemd units and their journal |
 
 The profile these packages install — the overlay, the addon lists, the install
 scripts — is developed in
@@ -72,7 +70,7 @@ the profile) and add one line to `/etc/pacman.conf`:
 Include = /etc/pacman.d/omarchy-server.conf
 ```
 
-Then `sudo pacman -Sy tui-firewall tui-systemd`.
+Then `sudo pacman -Sy omarchy-server`.
 
 ## The SELinux set
 
@@ -179,22 +177,22 @@ Nothing here vendors upstream code. The PKGBUILDs pull pinned commits:
 | Package | Source |
 |---|---|
 | `omarchy-server`, `omarchy-server-settings` | `https://github.com/edimarlnx/omarchy.git`, branch `server`, commit `468b511` |
-| `tui-firewall` | `https://github.com/tui-tools/tui-firewall.git`, tag `v0.1.0` |
-| `tui-systemd` | `https://github.com/tui-tools/tui-systemd.git`, tag `v0.1.0` |
 
-Exporting `OMARCHY_SRC`, `TUI_FIREWALL_SRC` or `TUI_SYSTEMD_SRC` substitutes a
-local checkout for any of them, which is how the lab repository builds against
-its working tree and how the ISO builder builds offline. `OMARCHY_GIT_URL` /
-`TUI_FIREWALL_GIT_URL` / `TUI_SYSTEMD_GIT_URL` replace the URL outright.
+Exporting `OMARCHY_SRC` substitutes a local checkout, which is how the lab
+repository builds against its working tree and how the ISO builder builds
+offline. `OMARCHY_GIT_URL` replaces the URL outright.
 
-`tui-firewall` was `fwall` while both tools lived in one monorepo. The package
-carries `provides=(fwall)` and `replaces=(fwall)`, so a machine that installed
-the old name takes the rename as an ordinary `pacman -Syu`.
+> **The `tui-firewall` and `tui-systemd` packages used to be built here.** They
+> are not any more: the tools publish their own signed pacman repository at
+> `https://pkgs.tui.tools`, and the server profile's `tui-tools` addon installs
+> them from there. Rebuilding somebody else's releases to hand them to a user
+> is a maintenance debt with no upside, and two copies of the same package name
+> in two repositories is an ambiguity a machine should never have to resolve.
 
 ## Building
 
 ```bash
-./scripts/build.sh                 # all five packages into out/
+./scripts/build.sh                 # all three packages into out/
 ./scripts/build.sh omarchy-server  # one
 ```
 
@@ -214,15 +212,15 @@ export GNUPGHOME=../omarchy-server/pkgs/keys/gnupg   # the lab key
 
 `verify.sh` is the acceptance test for the whole chain. It boots a clean
 `archlinux` container, serves `repo/` over HTTP on loopback, bootstraps the
-trust anchor out of the keyring package, installs `tui-firewall` and
+trust anchor out of the keyring package, installs `omarchy-server-settings` and
 `omarchy-server` under `SigLevel = Required`, and then points the same container
 at a hostile mirror: the same packages, a database rebuilt so every checksum
-agrees, and a `tui-firewall` signed by a freshly generated stranger's key.
+agrees, and an `omarchy-server` signed by a freshly generated stranger's key.
 pacman must refuse it ("required key missing from keyring"), and must also
 refuse the same package with no signature at all.
 
-Last run, 2026-08-29, against the lab key: **13 assertions, all PASS** — HTTP
-transport, keyring bootstrap, `pacman -Sy`, `fwall` (now `tui-firewall`) and
+Last run, 2026-08-30, against the lab key: **13 assertions, all PASS** — HTTP
+transport, keyring bootstrap, `pacman -Sy`, `omarchy-server-settings` and
 `omarchy-server` installed under `SigLevel = PackageRequired`, the shipped
 `/etc/pacman.d/omarchy-server.conf`, and both hostile cases rejected with
 nothing installed. The lab repository's own `pkgs/test.sh` (66 assertions) and
@@ -264,7 +262,7 @@ has already gone.
 > therefore always runs `scripts/build.sh` with no package list, and has no
 > "which packages" input; the alternative — downloading the still-referenced
 > published packages into `out/` first — buys nothing over a two-minute build
-> of all five.
+> of all three.
 
 Rehearsing, on any machine (no Arch and no pacman needed — the local step
 borrows `repo-add` from a container):

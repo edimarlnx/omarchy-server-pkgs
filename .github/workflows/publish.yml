@@ -16,7 +16,7 @@ name: Publish the [omarchy-server] repository
 # out/ rather than adding to the published one, so out/ has to hold the whole
 # repository or the packages missing from it would be dropped. Building a
 # subset would mean downloading the currently published packages first to fill
-# the gap; building all five takes a couple of minutes and needs no such step,
+# the gap; building all three takes a couple of minutes and needs no such step,
 # so there is no `packages` input any more.
 
 on:

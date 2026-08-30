@@ -20,7 +20,7 @@
 
 pkgname=omarchy-server
 pkgver=4.0.1
-pkgrel=13
+pkgrel=14
 pkgdesc="Omarchy runtime for headless servers"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -31,7 +31,16 @@ license=('MIT')
 #   gum             omarchy-update-confirm and omarchy-update-restart prompt
 #                   with it, so an interactive `omarchy-update` needs it.
 #   pacman-contrib  paccache, in omarchy-update-pkg-prune and in
-#                   install/server/prune-pkg-cache-server.sh.
+#                   install/server/prune-pkg-cache-server.sh; and
+#                   checkupdates, which omarchy-update-available and
+#                   omarchy-server-motd ask "is there anything to install?".
+#   fakeroot        checkupdates refreshes a throwaway copy of the sync
+#                   databases as an unprivileged user, and does it by running
+#                   pacman under fakeroot: without this it dies with "Cannot
+#                   find the fakeroot binary" and every update check reports
+#                   nothing to do. LD_PRELOAD plus a helper daemon in the same
+#                   session -- no setuid bit, no capability, no privilege the
+#                   caller did not already have.
 # Everything else that used to be here is optional (below) or gone.
 depends=(
   'omarchy-server-keyring'
@@ -43,6 +52,7 @@ depends=(
   'btrfs-progs'
   'gum'
   'pacman-contrib'
+  'fakeroot'
 )
 # Dropped from depends, with the reason each one is not required:
 #   git       every call site is the dev-channel checkout path
@@ -52,8 +62,6 @@ depends=(
 #   jq        used by omarchy-cmd-terminal-cwd, which needs a terminal, and by
 #             nothing on the update/install path.
 #   perl      four theme and menu commands, none of which run headless.
-#   fakeroot  only omarchy-upgrade-to-quattro, a one-off desktop migration;
-#             the real consumer is makepkg, which comes with the `dev` addon.
 optdepends=(
   'git: dev-channel checkout (omarchy-update-dev, omarchy-channel-set)'
   'jq: JSON handling in the desktop-oriented commands'
