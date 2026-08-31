@@ -20,7 +20,7 @@
 
 pkgname=omarchy-server
 pkgver=4.0.1
-pkgrel=15
+pkgrel=16
 pkgdesc="Omarchy runtime for headless servers"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -120,6 +120,19 @@ package() {
   # sources the two MAC addons install. Data, not scripts.
   if [[ -d $share/install/server/mac ]]; then
     find "$share/install/server/mac" -type f -exec chmod 0644 {} +
+  fi
+
+  # install/router/: the router profile's setup tree. It reuses the server
+  # leaves (router/all.sh sources install/server/*.sh directly) and adds only
+  # the router-specific ones -- the WAN/LAN network, IP forwarding, the
+  # nftables inet tui firewall and the router console identity. Shipped in this
+  # package, not a separate one, because the router profile is the server
+  # runtime with a router layered on; omarchy-apply-system routes to it when
+  # OMARCHY_PROFILE=router. The .service is the headless provision-owner unit
+  # the ISO copies for a deferred-provisioning router install.
+  if [[ -d $srcdir/overlay/runtime/install/router ]]; then
+    cp -a "$srcdir/overlay/runtime/install/router" "$share/install/router"
+    chmod 0644 "$share/install/router/"*.sh "$share/install/router/"*.service
   fi
 
   # Addon package lists. They live in profile/server/addons/ because the ISO
