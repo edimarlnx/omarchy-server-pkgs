@@ -7,12 +7,18 @@
 #   ./scripts/sync-overlay.sh            # copy from ../omarchy-server
 #   OMARCHY_SERVER_DIR=/path ./scripts/sync-overlay.sh
 #
-# The three directories copied are exactly the ones the overlay tarball carries
+# The four directories copied are exactly the ones the overlay tarball carries
 # (see scripts/build.sh):
 #
-#   overlay/   settings replacements, runtime commands, install/server, patches
-#   addons/    the addon package lists (also read by the ISO builder)
-#   branding/  the Limine wallpaper
+#   overlay/        settings replacements, runtime commands, install/server, patches
+#   addons/         the server addon package lists (also read by the ISO builder)
+#   branding/       the Limine wallpaper
+#   router-addons/  the ROUTER addon package lists, from profile/router/addons
+#
+# router-addons/ is vendored under a name of its own because both profiles call
+# the directory `addons` in the lab repository. The runtime package unpacks it
+# to install/router/addons/, which is where omarchy-server-addon looks first on
+# a machine whose /etc/omarchy-profile says `router`.
 #
 # The lab repository stays the source of truth for the profile's content; this
 # repository is the source of truth for how it is packaged. Run this before
@@ -23,6 +29,7 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 server_dir=${OMARCHY_SERVER_DIR:-$repo_root/../omarchy-server}
 source_dir="$server_dir/profile/server"
+router_dir="$server_dir/profile/router"
 target_dir="$repo_root/server-profile"
 
 if [[ ! -d $source_dir ]]; then
@@ -38,5 +45,9 @@ for dir in overlay addons branding; do
   rsync -a --delete "$source_dir/$dir/" "$target_dir/$dir/"
 done
 
+[[ -d $router_dir/addons ]] || { echo "Error: missing $router_dir/addons" >&2; exit 1; }
+rsync -a --delete "$router_dir/addons/" "$target_dir/router-addons/"
+
 echo "Synced $source_dir -> $target_dir"
+echo "Synced $router_dir/addons -> $target_dir/router-addons"
 git -C "$repo_root" status --short -- server-profile || true

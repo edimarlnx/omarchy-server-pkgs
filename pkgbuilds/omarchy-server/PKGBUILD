@@ -15,12 +15,13 @@
 #   - the desktop dependencies are gone and the runtime depends are cut to
 #     what a headless machine actually calls (see depends below).
 #   - install/server/ is added and omarchy-apply-system is patched to use it.
-#   - bin/omarchy-server-addon and install/server/addons/ add the opt-in
-#     package sets that keep the base lean.
+#   - bin/omarchy-server-addon and install/<profile>/addons/ add the opt-in
+#     package sets that keep the base lean, per profile: install/server/addons/
+#     for a server, install/router/addons/ first on a router.
 
 pkgname=omarchy-server
 pkgver=4.0.1
-pkgrel=18
+pkgrel=19
 pkgdesc="Omarchy runtime for headless servers"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -147,6 +148,24 @@ package() {
   # --noconfirm. omarchy-server-addon reads the file when it exists.
   if compgen -G "$srcdir/addons/*.pacman-args" >/dev/null; then
     install -Dm644 "$srcdir/addons/"*.pacman-args -t "$share/install/server/addons"
+  fi
+
+  # The ROUTER profile's addon lists, from profile/router/addons. The two
+  # profiles do not offer the same sets -- a router adds `headscale` and its
+  # `tui-tools` set carries the four router tools -- and omarchy-server-addon
+  # reads install/<profile>/addons/ before install/server/addons/, so a machine
+  # whose /etc/omarchy-profile says `router` gets the router lists and a server
+  # is untouched. Only the lists: the setup and preflight leaves stay in
+  # install/server/addons/ and are shared by both profiles.
+  if [[ -d $srcdir/router-addons ]]; then
+    install -d "$share/install/router/addons"
+    install -Dm644 "$srcdir/router-addons/"*.packages -t "$share/install/router/addons"
+    if compgen -G "$srcdir/router-addons/*.pacman-args" >/dev/null; then
+      install -Dm644 "$srcdir/router-addons/"*.pacman-args -t "$share/install/router/addons"
+    fi
+    if compgen -G "$srcdir/router-addons/*.sh" >/dev/null; then
+      install -Dm644 "$srcdir/router-addons/"*.sh -t "$share/install/router/addons"
+    fi
   fi
 
   # Commands this profile adds on top of upstream's bin/, copied in before the

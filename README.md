@@ -157,7 +157,7 @@ packages have no Arch counterpart to compare.
 pkgbuilds/<pkg>/      the PKGBUILDs, one directory each
 pkgbuilds/selinux.manifest       the SELinux set: pinned commit, order, rationale
 pkgbuilds/selinux-overrides/     this profile's changes on top of that upstream
-server-profile/       overlay/ addons/ branding/, vendored from the lab repo
+server-profile/       overlay/ addons/ branding/ router-addons/, vendored from the lab repo
 scripts/sync-overlay.sh   refresh server-profile/ from ../omarchy-server
 scripts/build.sh          build and sign the packages into out/
 scripts/build-selinux.sh  build and sign the SELinux set into out/selinux/
