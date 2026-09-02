@@ -19,9 +19,9 @@
 #
 # The profiles do not offer the same sets. A router has addons a server has no
 # use for (`headscale`, the coordination server its mesh registers against) and
-# its `tui-tools` set carries the four tools that only mean something on a
-# router (tui-router, tui-vpn, tui-traffic, tui-dc). So the lists are looked up
-# along a search path, most specific first:
+# its `tui-tools` set carries tui-router, which only means something on a
+# machine that routes. So the lists are looked up along a search path, most
+# specific first:
 #
 #   install/<profile>/addons/   the active profile's lists, when it has any
 #   install/server/addons/      the server lists, and the setup leaves
