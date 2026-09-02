@@ -85,11 +85,13 @@ prepare_signing_key
 # the server profile vendored under server-profile/ is packed into each
 # PKGBUILD directory that consumes it. addons/ rides along because the runtime
 # package ships those lists and the ISO builder reads the same files to fill
-# its offline mirror; branding/ carries the Limine wallpaper.
+# its offline mirror; branding/ carries the Limine wallpaper; router-addons/ is
+# the router profile's addon lists, unpacked by the runtime package into
+# install/router/addons/ so a router machine sees its own sets.
 # scripts/sync-overlay.sh is what refreshes server-profile/ from the lab repo.
 for package in omarchy-server-settings omarchy-server; do
   tar -czf "$repo_root/pkgbuilds/$package/omarchy-server-overlay.tar.gz" \
-    -C "$repo_root/server-profile" overlay addons branding
+    -C "$repo_root/server-profile" overlay addons branding router-addons
 done
 
 install -d "$out_dir"
