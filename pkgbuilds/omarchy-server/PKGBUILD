@@ -21,7 +21,7 @@
 
 pkgname=omarchy-server
 pkgver=4.0.1
-pkgrel=20
+pkgrel=21
 pkgdesc="Omarchy runtime for headless servers"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
