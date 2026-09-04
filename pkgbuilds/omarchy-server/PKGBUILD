@@ -21,7 +21,7 @@
 
 pkgname=omarchy-server
 pkgver=4.0.1
-pkgrel=21
+pkgrel=22
 pkgdesc="Omarchy runtime for headless servers"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -35,6 +35,16 @@ license=('MIT')
 #                   install/server/prune-pkg-cache-server.sh; and
 #                   checkupdates, which omarchy-update-available and
 #                   omarchy-server-motd ask "is there anything to install?".
+#   arch-audit      `omarchy-server-update run --security-only` -- the daily
+#                   update on this profile -- asks it which installed packages
+#                   have an open advisory with a fix already published, and
+#                   `omarchy-server-update status` reports that count whether
+#                   or not the timer is on. It reads the local package
+#                   database and security.archlinux.org and installs nothing
+#                   itself: the answer is a list of names, and pacman acts on
+#                   it. A hard depend rather than an optdepend because the
+#                   security timer is half of what this profile promises a
+#                   machine that is left alone.
 #   fakeroot        checkupdates refreshes a throwaway copy of the sync
 #                   databases as an unprivileged user, and does it by running
 #                   pacman under fakeroot: without this it dies with "Cannot
@@ -54,6 +64,7 @@ depends=(
   'gum'
   'pacman-contrib'
   'fakeroot'
+  'arch-audit'
 )
 # Dropped from depends, with the reason each one is not required:
 #   git       every call site is the dev-channel checkout path
@@ -176,7 +187,9 @@ package() {
   # package because the commands they run are in this one, and a unit whose
   # ExecStart is owned by a different package is a dependency waiting to be
   # forgotten. install/server/enable-services-server.sh enables the palette
-  # oneshot; omarchy-server-update.timer ships disabled and is turned on by
+  # oneshot; the three update timers -- the weekly full update, the daily
+  # security-only update and the one that takes a deferred reboot at the start
+  # of the reboot window -- all ship disabled and are turned on together by
   # `omarchy-server-update enable` or by an autoinstall drive that carries an
   # `unattended-updates` file.
   install -Dm644 "$srcdir/overlay/runtime/systemd/"*.service \
