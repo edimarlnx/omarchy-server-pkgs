@@ -13,7 +13,7 @@
 
 pkgname=omarchy-server-settings
 pkgver=4.0.1
-pkgrel=9
+pkgrel=10
 pkgdesc="Omarchy Server defaults, /etc/skel content and system configuration"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -61,6 +61,7 @@ backup=('etc/fastfetch/config.jsonc'
         'etc/issue.net'
         'etc/issue.serial'
         'etc/omarchy-profile'
+        'etc/omarchy/server/update.conf'
         'etc/pacman.d/omarchy-server.conf')
 
 package() {
@@ -322,6 +323,16 @@ ISSUE
   install -Dm644 "$overlay/etc/issue.net" "$pkgdir/etc/issue.net"
   install -Dm644 "$overlay/etc/systemd/system/serial-getty@.service.d/10-omarchy-issue.conf" \
     "$pkgdir/etc/systemd/system/serial-getty@.service.d/10-omarchy-issue.conf"
+
+  # How the machine takes its updates: SECURITY_DAILY, FULL_WEEKLY and
+  # REBOOT_WINDOW, read by omarchy-server-update and by the three timers it
+  # manages. Shipped with the defaults and listed in backup= above, so an edit
+  # survives every upgrade and a machine that was never configured still has a
+  # window rather than a missing file. The commands in omarchy-server read it;
+  # it lives here because /etc is what this package owns, and because the
+  # values are settings a person edits rather than state a program writes.
+  install -Dm644 "$overlay/etc/omarchy/server/update.conf" \
+    "$pkgdir/etc/omarchy/server/update.conf"
 
   # The profile marker omarchy-apply-system reads when OMARCHY_PROFILE is not
   # in the environment (see the apply-system patch in omarchy-server).
