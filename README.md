@@ -176,7 +176,7 @@ Nothing here vendors upstream code. The PKGBUILDs pull pinned commits:
 
 | Package | Source |
 |---|---|
-| `omarchy-server`, `omarchy-server-settings` | `https://github.com/edimarlnx/omarchy.git`, branch `server`, commit `468b511` |
+| `omarchy-server`, `omarchy-server-settings` | `https://github.com/edimarlnx/omarchy.git`, tag `v4.0.2`, commit `346e69e` |
 
 Exporting `OMARCHY_SRC` substitutes a local checkout, which is how the lab
 repository builds against its working tree and how the ISO builder builds

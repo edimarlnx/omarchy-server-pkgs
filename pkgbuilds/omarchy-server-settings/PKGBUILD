@@ -8,12 +8,12 @@
 # reduced to the files a headless machine reads, plus the server-specific
 # replacements from the server profile's overlay/settings/.
 #
-# Sources: the pinned commit of the omarchy fork (branch `server`) plus the
+# Sources: the pinned commit of the omarchy mirror (release tag) plus the
 # overlay tarball packed by scripts/build.sh out of server-profile/.
 
 pkgname=omarchy-server-settings
-pkgver=4.0.1
-pkgrel=10
+pkgver=4.0.2
+pkgrel=1
 pkgdesc="Omarchy Server defaults, /etc/skel content and system configuration"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -26,8 +26,9 @@ provides=("omarchy-settings=${pkgver}")
 conflicts=('omarchy-settings' 'omarchy-settings-dev')
 install="${pkgname}.install"
 
-# Pinned commit on branch `server` of the fork.
-_commit=468b511249b1a341311c46f5a7cf81aa5bc5af92
+# Pinned commit on the mirror: the upstream release tag named in the lab
+# repository's upstream/PIN.
+_commit=346e69e1cec6c4e8924531874af6ba010a1bc99e
 # The default source is the public fork over https, which is what CI and any
 # `makepkg` run outside this repository's build scripts get. A builder that
 # already has a checkout (the lab repo's pkgs/build.sh bind mounts one at
