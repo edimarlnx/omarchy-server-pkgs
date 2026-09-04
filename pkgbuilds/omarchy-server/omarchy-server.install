@@ -1,0 +1,38 @@
+# Upstream Omarchy migrations do not run on this profile unless the profile
+# asks for them, and this scriptlet is what makes that true across upgrades.
+#
+# omarchy-migrate reads per-user markers under ~/.local/state/omarchy/
+# migrations and runs every migration that has none. install/server/
+# root-migration-state-server.sh seeds root's at install time; nothing seeded
+# the migrations that arrive LATER, with a new upstream release. A headless
+# machine runs its updates as root, so those went straight into the update's
+# `== migrations` step — which is how v4.0.2's sshd migration disabled sshd on
+# a machine reachable only over ssh.
+#
+# Marking happens here, in post_upgrade, because pacman runs the scriptlet
+# after this package's files are in place: the new migrations/ directory is on
+# disk, and the update's migration step has not run yet.
+#
+# install/server/migrations-allow is the way back in: every migration id listed
+# there is left unmarked, so it stays pending and runs exactly as upstream
+# intended. See omarchy-server-migration-seed for the whole reasoning,
+# including why named accounts are deliberately not seeded.
+#
+# `|| true`: a scriptlet that fails fails the pacman transaction, and a machine
+# that could not be seeded is a machine with migrations pending, not a machine
+# that should refuse to upgrade.
+
+_seed_migrations() {
+  local seed=/usr/share/omarchy/bin/omarchy-server-migration-seed
+
+  [[ -x $seed ]] || return 0
+  "$seed" || true
+}
+
+post_install() {
+  _seed_migrations
+}
+
+post_upgrade() {
+  _seed_migrations
+}
