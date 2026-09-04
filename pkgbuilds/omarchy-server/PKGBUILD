@@ -7,7 +7,7 @@
 #   /etc/skel/.local/state/omarchy/migrations one stub per migration
 #   /usr/share/libalpm/hooks/*.hook
 #
-# Differences from upstream omarchy 4.0.1:
+# Differences from upstream omarchy 4.0.2:
 #   - themes/ (120 MiB of 126) and shell/ (Quickshell) are not shipped.
 #   - /usr/bin entries are symlinks into /usr/share/omarchy/bin instead of
 #     byte copies, which halves the shipped command tree.
@@ -20,8 +20,8 @@
 #     for a server, install/router/addons/ first on a router.
 
 pkgname=omarchy-server
-pkgver=4.0.1
-pkgrel=22
+pkgver=4.0.2
+pkgrel=2
 pkgdesc="Omarchy runtime for headless servers"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -86,7 +86,7 @@ makedepends=('git')
 provides=('omarchy')
 conflicts=('omarchy' 'omarchy-dev')
 
-_commit=468b511249b1a341311c46f5a7cf81aa5bc5af92
+_commit=346e69e1cec6c4e8924531874af6ba010a1bc99e
 # The default source is the public fork over https, which is what CI and any
 # `makepkg` run outside this repository's build scripts get. A builder that
 # already has a checkout (the lab repo's pkgs/build.sh bind mounts one at
