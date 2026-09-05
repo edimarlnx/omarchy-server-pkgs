@@ -14,6 +14,10 @@
 #   addons/         the server addon package lists (also read by the ISO builder)
 #   branding/       the Limine wallpaper
 #   router-addons/  the ROUTER addon package lists, from profile/router/addons
+#   migrations-allow  the upstream-migration allowlist (a single file, not a
+#                   directory: it is profile POLICY the maintainer edits, and
+#                   the runtime package installs it as
+#                   install/server/migrations-allow)
 #
 # router-addons/ is vendored under a name of its own because both profiles call
 # the directory `addons` in the lab repository. The runtime package unpacks it
@@ -47,6 +51,10 @@ done
 
 [[ -d $router_dir/addons ]] || { echo "Error: missing $router_dir/addons" >&2; exit 1; }
 rsync -a --delete "$router_dir/addons/" "$target_dir/router-addons/"
+
+[[ -f $source_dir/migrations-allow ]] ||
+  { echo "Error: missing $source_dir/migrations-allow" >&2; exit 1; }
+rsync -a "$source_dir/migrations-allow" "$target_dir/migrations-allow"
 
 echo "Synced $source_dir -> $target_dir"
 echo "Synced $router_dir/addons -> $target_dir/router-addons"

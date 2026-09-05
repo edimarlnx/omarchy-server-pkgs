@@ -87,11 +87,13 @@ prepare_signing_key
 # package ships those lists and the ISO builder reads the same files to fill
 # its offline mirror; branding/ carries the Limine wallpaper; router-addons/ is
 # the router profile's addon lists, unpacked by the runtime package into
-# install/router/addons/ so a router machine sees its own sets.
+# install/router/addons/ so a router machine sees its own sets;
+# migrations-allow is the upstream-migration allowlist, installed as
+# install/server/migrations-allow and read by omarchy-server-migration-seed.
 # scripts/sync-overlay.sh is what refreshes server-profile/ from the lab repo.
 for package in omarchy-server-settings omarchy-server; do
   tar -czf "$repo_root/pkgbuilds/$package/omarchy-server-overlay.tar.gz" \
-    -C "$repo_root/server-profile" overlay addons branding router-addons
+    -C "$repo_root/server-profile" overlay addons branding router-addons migrations-allow
 done
 
 install -d "$out_dir"

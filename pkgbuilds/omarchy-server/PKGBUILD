@@ -6,6 +6,7 @@
 #   /usr/bin/omarchy-*                        one entry per command in bin/
 #   /etc/skel/.local/state/omarchy/migrations one stub per migration
 #   /usr/share/libalpm/hooks/*.hook
+#   .install scriptlet                        re-seeds root's migration markers
 #
 # Differences from upstream omarchy 4.0.2:
 #   - themes/ (120 MiB of 126) and shell/ (Quickshell) are not shipped.
@@ -18,10 +19,16 @@
 #   - bin/omarchy-server-addon and install/<profile>/addons/ add the opt-in
 #     package sets that keep the base lean, per profile: install/server/addons/
 #     for a server, install/router/addons/ first on a router.
+#   - an .install scriptlet marks every shipped migration as already applied
+#     for root on install AND on upgrade, minus the ids listed in
+#     install/server/migrations-allow. Upstream migrations are written to carry
+#     a desktop session forward and run inside an unattended update as root;
+#     v4.0.2 shipped one that disabled sshd on a key-only server. See
+#     omarchy-server-migration-seed and the profile's docs/security-updates.md.
 
 pkgname=omarchy-server
 pkgver=4.0.2
-pkgrel=2
+pkgrel=3
 pkgdesc="Omarchy runtime for headless servers"
 arch=('any')
 url="https://github.com/basecamp/omarchy"
@@ -83,6 +90,7 @@ optdepends=(
   'tailscale: private network, installed by `omarchy-server-addon tailscale`'
 )
 makedepends=('git')
+install="$pkgname.install"
 provides=('omarchy')
 conflicts=('omarchy' 'omarchy-dev')
 
@@ -213,6 +221,14 @@ package() {
   for command in "$share/bin/"*; do
     ln -sf "/usr/share/omarchy/bin/${command##*/}" "$pkgdir/usr/bin/${command##*/}"
   done
+
+  # --- the upstream-migration allowlist ------------------------------------
+  # Read by omarchy-server-migration-seed, which the .install scriptlet runs on
+  # install and on every upgrade. Ships empty: no upstream migration has been
+  # opted into. Lives beside install/server/ because it is part of the server
+  # profile's setup tree, not a machine-local configuration file -- a
+  # maintainer edits it in the lab repository and it arrives by package.
+  install -Dm644 "$srcdir/migrations-allow" "$share/install/server/migrations-allow"
 
   # --- pacman hooks --------------------------------------------------------
   # Only the update guard. The Hyprland reload hooks have no compositor.
