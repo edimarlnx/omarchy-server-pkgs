@@ -211,7 +211,7 @@ if ((markdown)); then
   if ((${#additive[@]})); then
     echo "<details><summary>Additive, no Arch counterpart to compare (${#additive[@]})</summary>"
     echo
-    printf '-   `%s`\n' "${additive[@]}"
+    printf -- '-   `%s`\n' "${additive[@]}"
     echo
     echo "</details>"
     echo
@@ -219,7 +219,7 @@ if ((markdown)); then
   if ((${#unreadable[@]})); then
     echo "**Not checked (${#unreadable[@]}) — treat this as a failure of the check, not a pass:**"
     echo
-    printf '-   %s\n' "${unreadable[@]}"
+    printf -- '-   %s\n' "${unreadable[@]}"
     echo
   fi
 else
